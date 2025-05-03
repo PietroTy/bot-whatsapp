@@ -3,3 +3,4 @@
 **/puppeteer-core/.local-chromium/
 node_modules/
 .env
+start.bat
