@@ -219,7 +219,6 @@ function getSystemPrompt() {
     };
 }
 
-// Função de chamada à IA
 async function perguntarIA(messages) {
     const response = await axios.post(
         'https://openrouter.ai/api/v1/chat/completions',
