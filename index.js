@@ -27,12 +27,44 @@ client.on('ready', () => {
 
 client.on('message', async (message) => {
     const text = message.body.toLowerCase();
-    const groupName = "figurinhas#bot";
 
     if (text.length < 2) return;
 
     const chat = await message.getChat();
-    const isStickerGroup = chat.isGroup && chat.name === groupName;
+    const isStickerGroup = chat.isGroup && chat.name === "figurinhas#bot";
+
+    const contact = await message.getContact();
+
+    const isFromNewsletter = contact.name === "Newsletter";
+
+    if (isFromNewsletter) {
+
+        const messageToSend = message.body;
+
+        message.reply("Mensagem recebida com sucesso!");
+
+        try {
+            const allChats = await client.getChats();
+
+            if (!allChats || allChats.length === 0) {
+                message.reply("Não foi possível obter a lista de chats.");
+                return;
+            }
+
+            const group = allChats.find(chat => chat.isGroup && chat.name === "T . D . A . P .");
+
+            if (group) {
+                await client.sendMessage(group.id._serialized, messageToSend);
+            } else {
+                message.reply("O grupo 'figurinhas#bot' não foi encontrado. Verifique se o nome está correto.");
+            }
+        } catch (error) {
+            console.error("Erro ao buscar ou enviar mensagem para o grupo:", error.message);
+            message.reply("Ocorreu um erro ao tentar enviar a mensagem para o grupo.");
+        }
+
+        return;
+    }
 
     if (isStickerGroup && text.trim() === "#link") {
         await message.reply("Aqui está o link do grupo:\nhttps://chat.whatsapp.com/KAg83JlOyWSGoHLBOLwrR8");
@@ -195,7 +227,7 @@ client.on('message', async (message) => {
 function getSystemPrompt() {
     return {
         role: "system",
-        content: `Você é um robô chamado "Bot". Responda de forma direta, objetiva e robótica, sem usar gírias, emojis ou linguagem informal, e de preferência em formato de tópicos.
+        content: `Você é um robô chamado "Bot". Responda de forma direta, objetiva e robótica, sem usar gírias, emojis ou linguagem informal.
         Sua função é auxiliar quando chamado com frases que iniciam com "#bot", realizando as seguintes tarefas:
         
         - Responder perguntas objetivas e gerais.
