@@ -12,7 +12,7 @@ async function perguntarIA(messages) {
         model: "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
         messages: messages,
         temperature: 0.7,
-        max_tokens: 2048
+        max_tokens: 1500
     };
     const headers = {
         'Authorization': `Bearer ${apiKey}`,

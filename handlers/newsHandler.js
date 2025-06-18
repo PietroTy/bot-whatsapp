@@ -5,7 +5,7 @@ const path = require('path');
 const { MessageMedia } = require('whatsapp-web.js');
 const { perguntarIA } = require('../services/aiService');
 
-const chatWithNewsletter = ["T . D . A . P .", "Laranja Cremosa"];
+const chatWithNewsletter = ["T . D . A . P .", "Q Cremosidade"];
 const COUNTER_FILE = path.join(__dirname, '../pitmunews_counter.json');
 
 function getEditionNumber() {
@@ -14,7 +14,7 @@ function getEditionNumber() {
             const data = JSON.parse(fs.readFileSync(COUNTER_FILE, 'utf8'));
             return data.edition || 1;
         }
-    } catch { }
+    } catch {  }
     return 1;
 }
 
@@ -45,6 +45,14 @@ async function fetchEpicFreeGames() {
         console.error("Erro ao buscar jogos grátis na Epic Games:", error.message);
         return [];
     }
+}
+
+function truncateText(text, maxLength) {
+    if (text.length <= maxLength) {
+        return text;
+    }
+    console.warn(`Texto do editor truncado de ${text.length} para ${maxLength} caracteres.`);
+    return text.slice(0, maxLength);
 }
 
 
@@ -103,7 +111,7 @@ Você é um editor-chefe de um jornal digital chamado PITMUNEWS. Sua tarefa é r
 **8. RODAPÉ:**
    - Finalize com o seguinte bloco de texto EXATO, preservando a formatação e os emojis:
      📨 Você está lendo *PITMUNEWS*
-     🧠 Criado com: TogetherAI, VINIMUNEWS e nosso querido adm Pietro
+     🧠 Criado com: TogetherAI, VINIMUNEWS e News API
      🤖 Distribuído automaticamente pelo Botzin do ZipZop
 ---
 
@@ -125,17 +133,18 @@ async function handleAutomaticNews(message, client) {
         const editionNumber = incrementEditionNumber();
         const textoCompletoDoEditor = message.body;
 
-        const freeGames = await fetchEpicFreeGames();
+        const textoTruncado = truncateText(textoCompletoDoEditor, 12000);
 
+        const freeGames = await fetchEpicFreeGames();
         let freeGamesText = "Nenhum jogo grátis encontrado hoje.";
         if (freeGames && freeGames.length > 0) {
-            freeGamesText = freeGames.join('\n'); // Apenas a lista de nomes
+            freeGamesText = freeGames.join('\n');
         }
         
         const promptTemplate = getPromptTemplate();
         const finalPrompt = promptTemplate
             .replace('${editionNumber}', editionNumber)
-            .replace('${textoCompletoDoEditor}', textoCompletoDoEditor)
+            .replace('${textoCompletoDoEditor}', textoTruncado)
             .replace('${jogosGratisEpic}', freeGamesText);
         
         const jornal = await perguntarIA([
@@ -167,23 +176,22 @@ async function handleAutomaticNews(message, client) {
         }
     } catch (error) {
         console.error("Erro ao gerar jornal automático:", error);
-        await message.reply("Ocorreu um erro ao tentar gerar ou enviar o jornal.");
+        const errorMessage = error.response?.data?.error?.message || error.message;
+        await message.reply(`Ocorreu um erro ao tentar gerar ou enviar o jornal. Detalhe: ${errorMessage}`);
     }
 }
 
 /**
  * @param {import('whatsapp-web.js').Message} message
- * @param {import('whatsapp-web.js').Client} client
- * @returns {Promise<boolean>}
+ * @param {import('whatsapp-web.js').Client} client 
+ * @returns {Promise<boolean>} 
  */
 async function handleNewsCommands(message, client) {
-    
     const contact = await message.getContact();
     if (contact.name === "Newsletter") {
         await handleAutomaticNews(message, client);
         return true;
     }
-
     return false;
 }
 
