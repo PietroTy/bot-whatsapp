@@ -5,8 +5,15 @@ const path = require('path');
 const { MessageMedia } = require('whatsapp-web.js');
 const { perguntarIA } = require('../services/aiService');
 
-const chatWithNewsletter = ["T . D . A . P .", "Q Cremosidade"];
+const chatWithNewsletter = ["T . D . A . P .", "Laranja Cremosa"];
 const COUNTER_FILE = path.join(__dirname, '../pitmunews_counter.json');
+
+const ANIVERSARIANTES_ESPECIAIS = [
+    { nome: 'Pietro', data: '01/09' },
+    { nome: 'Vitor', data: '01/09' }
+];
+
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 function getEditionNumber() {
     try {
@@ -14,7 +21,7 @@ function getEditionNumber() {
             const data = JSON.parse(fs.readFileSync(COUNTER_FILE, 'utf8'));
             return data.edition || 1;
         }
-    } catch {  }
+    } catch { }
     return 1;
 }
 
@@ -29,17 +36,15 @@ function incrementEditionNumber() {
     return newEdition;
 }
 
-
 async function fetchEpicFreeGames() {
     const url = "https://store-site-backend-static.ak.epicgames.com/freeGamesPromotions?locale=pt-BR&country=BR&allowCountries=BR";
     try {
         const response = await axios.get(url);
         const elements = response.data?.data?.Catalog?.searchStore?.elements || [];
-        const freeGames = elements.filter(game => {
-            const isFree = game.price?.totalPrice?.discountPrice === 0;
-            const isFreeCategory = game.categories?.some(category => category.path === 'freegames');
-            return isFree && isFreeCategory;
-        });
+        const freeGames = elements.filter(game =>
+            game.price?.totalPrice?.discountPrice === 0 &&
+            game.categories?.some(category => category.path === 'freegames')
+        );
         return freeGames.map(game => game.title);
     } catch (error) {
         console.error("Erro ao buscar jogos grátis na Epic Games:", error.message);
@@ -47,145 +52,235 @@ async function fetchEpicFreeGames() {
     }
 }
 
-function truncateText(text, maxLength) {
-    if (text.length <= maxLength) {
-        return text;
-    }
-    console.warn(`Texto do editor truncado de ${text.length} para ${maxLength} caracteres.`);
-    return text.slice(0, maxLength);
+function checkAniversariantes(textoDoJornal) {
+    const regexData = /(\d{1,2}) de (\w+) de (\d{4})/;
+    const match = textoDoJornal.match(regexData);
+    if (!match) return [];
+
+    const dia = parseInt(match[1], 10);
+    const mesTexto = match[2].toLowerCase();
+
+    const meses = { 'janeiro': 1, 'fevereiro': 2, 'março': 3, 'abril': 4, 'maio': 5, 'junho': 6, 'julho': 7, 'agosto': 8, 'setembro': 9, 'outubro': 10, 'novembro': 11, 'dezembro': 12 };
+    const mes = meses[mesTexto];
+    if (!mes) return [];
+
+    const diaFormatado = String(dia).padStart(2, '0');
+    const mesFormatado = String(mes).padStart(2, '0');
+    const dataAtualFormatada = `${diaFormatado}/${mesFormatado}`;
+
+    return ANIVERSARIANTES_ESPECIAIS
+        .filter(p => p.data === dataAtualFormatada)
+        .map(p => p.nome);
 }
 
+function splitViniMunews(textoCompleto) {
+    const inicioSecaoNoticias1 = '*🇧🇷 BRASIL GERAL*';
+    const inicioSecaoNoticias2 = '*💓 SAÚDE 💓*';
 
-function getPromptTemplate() {
+    const index1 = textoCompleto.indexOf(inicioSecaoNoticias1);
+    const index2 = textoCompleto.indexOf(inicioSecaoNoticias2);
+
+    if (index1 === -1 || index2 === -1) {
+        console.error("Não foi possível dividir o jornal. Os marcadores de seção 'BRASIL GERAL' ou 'SAÚDE' não foram encontrados.");
+        return null;
+    }
+
+    const introducao = textoCompleto.substring(0, index1);
+    const secaoNoticias1 = textoCompleto.substring(index1, index2);
+    const secaoNoticias2 = textoCompleto.substring(index2);
+
+    return { introducao, secaoNoticias1, secaoNoticias2 };
+}
+
+function getPromptParte1(textoIntroducao, editionNumber) {
     return `
-Você é um editor-chefe de um jornal digital chamado PITMUNEWS. Sua tarefa é receber o texto bruto de um jornal parceiro (VINIMUNEWS) e uma lista de jogos grátis, e criar uma nova edição do seu próprio jornal.
+Você é um editor de jornal digital (PITMUNEWS) com foco em design limpo e consistência. Sua tarefa é criar a **PARTE INTRODUTÓRIA** do jornal.
 
-**REGRAS GERAIS OBRIGATÓRIAS:**
+**REGRAS DE FORMATAÇÃO GERAL:**
+- Para títulos de seção (ex: "HOJE É DIA...", "UTILIDADES"), use os emojis originais do texto-fonte.
+- **NUNCA use asteriscos \`*\` para formatar títulos.** Deixe os títulos limpos.
 
-1.  **REGRA DE OURO - MANCHETE DE ANIVERSÁRIO:** Se a data do jornal corresponder a uma das datas na lista de 'Aniversários Especiais' (ver seção 4), a PRIMEIRA manchete do dia DEVE ser uma celebração sobre o aniversariante. Escreva em um tom pessoal e comemorativo.
-2.  **SELEÇÃO E DETALHE:** Tente selecionar até 3 das notícias mais importantes para cada tópico do VINIMUNEWS. Se não houver notícias relevantes, menos é aceitável. Resuma as informações, mas forneça detalhes suficientes (cerca de 2-3 frases) para que o leitor entenda o contexto.
-3.  **LIMPEZA:** IGNORE COMPLETAMENTE e não inclua no seu jornal: pedidos de PIX, chaves de celular, links de redes sociais, hashtags, frases repetidas, listas de santos, anjos, aniversários de municípios e a "Frase do Dia".
-4.  **EMOJIS:** Use emojis de forma inteligente para separar seções e, obrigatoriamente, antes de CADA item de notícia e CADA indicador chave.
+**TEXTO DE ORIGEM (INTRODUÇÃO DO VINIMUNEWS):**
+\`\`\`
+${textoIntroducao}
+\`\`\`
 
-**ESTRUTURA E FORMATO DO PITMUNEWS (SIGA EXATAMENTE):**
+**INSTRUÇÕES PARA ESTA PARTE:**
 
----
-**1. CABEÇALHO:**
-   - Formato: 📰 PITMUNEWS – Ano 1, Nº \${editionNumber} 🗞
-   - Local: 📍 De SJBV-SP / SP-SP
-   - Data: Extraia do VINIMUNEWS.
+1.  **CABEÇALHO (Formato Exato):**
+    📰 PITMUNEWS – Ano 1, Nº ${editionNumber} 🗞
+    📌 De São Paulo-SP / SJBV-SP
+    📅 [Extraia a data completa do texto de origem]
 
-**2. SEÇÃO "MANCHETES DO DIA":**
-   - Lembre-se da "REGRA DE OURO" para a primeira manchete em dias de aniversário.
-   - Escolha os 3 eventos mais impactantes do dia e escreva uma frase de impacto para cada.
+2.  **HOJE É DIA...**
+    -   Use o título original \`🗓 HOJE É DIA...\`.
+    -   Liste os itens da seção original, um por linha, com seus emojis.
 
-**3. SEÇÃO "UTILIDADES DO DIA":**
-   - *Dia do Ano:* Extraia o número do dia do ano.
-   - *Fase da Lua:* Extraia a fase da lua e a porcentagem de visibilidade.
-   - *Tempo em SP:* Encontre a previsão para "SÃO PAULO/SP" e a formate de forma curta.
-   - *Hoje é dia de:* Liste os itens mais interessantes da seção "HOJE É DIA...", cada um em uma nova linha e começando com um emoji temático.
-   - *Horóscopo:* Faça um resumo MUITO CURTO do horóscopo do signo vigente.
-   - *Indicadores Chave:* Extraia os valores de Dólar, Euro, Ibovespa, Bitcoin e Selic. Formate em uma única linha, com um emoji temático antes de cada um.
+3.  **UTILIDADES DO DIA**
+    -   Crie o título \`⚙️ UTILIDADES DO DIA\`.
+    -   Liste os seguintes itens de forma limpa, um por linha:
+    -   \`⏳ Dia do Ano:\` [Extraia do texto de origem]
+    -   \`🌘 Fase da Lua:\` [Extraia a fase e a visibilidade]
+    -   \`☀ Tempo em São Paulo:\` [Resuma a previsão para SÃO PAULO/SP em uma frase]
+    -   \`🪐 Horóscopo:\` [Resuma a previsão do signo em no máximo duas frases curtas]
 
-**4. SEÇÃO "ANIVERSARIANTE DO DIA" (OPCIONAL):**
-   - **REGRA CONDICIONAL:** Esta seção SÓ DEVE APARECER se a data do jornal corresponder a uma das datas na lista abaixo. A data na lista está no formato 'DIA/MÊS'.
-   - *Lista de Aniversários:* (1/9 Pietro e Vitor, 4/6 Lais, 19/5 Pedro)
-   - Se a condição for atendida, use o título "🎂 Nosso(s) Aniversariante(s) do Dia!" e escreva uma pequena mensagem pessoal e calorosa de parabéns.
-
-**5. SEÇÃO "BOLA DA VEZ":**
-   - **🎮 GAMES:**
-     - **Instrução para Jogo Grátis:** Verifique a seção 'JOGOS GRÁTIS DA EPIC GAMES HOJE' no final do prompt. Se houver jogos, anuncie-os de forma destacada no início desta seção (ex: 🎁 **Grátis na Epic:** Nome do Jogo). Se a lista disser 'Nenhum', não mencione nada sobre jogos grátis.
-     - **Notícias:** Escolha até 3 notícias da seção "GAMES" do texto do VINIMUNEWS. Resuma cada uma em um parágrafo curto, começando com um emoji.
-   - **💻 TECNOLOGIA:** Tente incluir até 3 notícias. Resuma em um parágrafo curto, começando com um emoji.
-
-**6. SEÇÃO "DESTAQUES DE NOTÍCIAS":**
-   - Tente incluir até 3 notícias para cada categoria.
-   - **🏛️ POLÍTICA:** Selecione notícias sobre governo, Congresso, judiciário e decisões políticas importantes.
-   - **🏥 SAÚDE & MEIO AMBIENTE:** Procure por notícias sobre saúde, bem-estar, ciência médica, sustentabilidade e questões ambientais.
-   - **💰 ECONOMIA & MERCADO:** Use a seção "ECONOMIA".
-   - **⚽ ESPORTES:** Use a seção "ESPORTES".
-
-**7. SEÇÃO "FILMES & SÉRIES":**
-   - 🎬 Procure por 1 ou 2 notícias relevantes sobre filmes, séries ou a indústria do entretenimento e resuma-as aqui.
-
-**8. RODAPÉ:**
-   - Finalize com o seguinte bloco de texto EXATO, preservando a formatação e os emojis:
-     📨 Você está lendo *PITMUNEWS*
-     🧠 Criado com: TogetherAI, VINIMUNEWS e News API
-     🤖 Distribuído automaticamente pelo Botzin do ZipZop
----
-
-**CONTEXTO FORNECIDO PARA O JORNAL DE HOJE:**
-
----
-**TEXTO BRUTO DO VINIMUNEWS:**
-\${textoCompletoDoEditor}
----
-**JOGOS GRÁTIS DA EPIC GAMES HOJE:**
-\${jogosGratisEpic}
+4.  **NÃO INCLUA NADA MAIS.**
 `;
 }
 
+function getPromptParte2(textoNoticias1) {
+    return `
+Você é um editor de jornal digital (PITMUNEWS). Sua tarefa é **EXTRAIR E REFORMATAR** as manchetes da seção de notícias gerais.
 
+**REGRA DE EXTRAÇÃO (MUITO IMPORTANTE):**
+- Sua função é replicar a formatação original do VINIMUNEWS para as notícias.
+- Para **CADA** notícia das seções "🇧🇷 BRASIL GERAL", "🌎 INTERNACIONAL" e "🏞️ BRASIL REGIONAIS", você deve:
+    1. Manter o emoji original (✍️, 🌎, 🚓, etc.).
+    2. Manter o texto EXATO da manchete.
+    3. **REMOVER a fonte no final** (ex: remover "(POD360)", "(CNN)", etc.).
+- Apresente cada manchete reformatada em uma nova linha.
+- **NÃO AGRUPE, NÃO RESUMA, NÃO CRIE PARÁGRAFOS.** Apenas extraia e limpe as manchetes.
+
+**TEXTO DE ORIGEM (NOTÍCIAS GERAIS E REGIONAIS):**
+\`\`\`
+${textoNoticias1}
+\`\`\`
+
+**INSTRUÇÕES:**
+
+1.  **TÍTULO DA SEÇÃO:**
+    Comece com o título limpo: 🌎 GIRO DE NOTÍCIAS 🇧🇷
+
+2.  **CONTEÚDO:**
+    -   Aplique a **REGRA DE EXTRAÇÃO** para todas as notícias no texto de origem.
+`;
+}
+
+function getPromptParte3(textoNoticias2, jogosGratis) {
+    return `
+Você é um editor de jornal digital (PITMUNEWS) que segue regras de formatação de maneira precisa. Sua tarefa é criar a **PARTE FINAL** do jornal, focada em notícias temáticas.
+
+**REGRA DE EXTRAÇÃO (APLIQUE A TODAS AS SEÇÕES DE NOTÍCIAS):**
+- Sua única tarefa é **EXTRAIR E REFORMATAR CADA MANCHETE**.
+- **COMO FAZER:**
+    1. Use o título e os emojis originais da seção do VINIMUNEWS, mas **REMOVA os asteriscos \`*\`**.
+    2. Para cada notícia da seção, mantenha o emoji e o texto da manchete.
+    3. **REMOVA a fonte no final** (ex: "(G1)", "(R7)").
+- **NÃO RESUMA, NÃO CRIE PARÁGRAFOS, NÃO AGRUPE NOTÍCIAS.** Apenas liste as manchetes limpas, uma por linha.
+
+**REGRA DE EXCLUSÃO:**
+- **IGNORE COMPLETAMENTE** as seções de texto longo: \`AGROINFORMA\`, \`INFORMINDUSTRIA\`, \`FIQUE SABENDO\`, \`TURISMO\`, \`DEVOCIONAL\`, e \`CULINARIA\`. Elas não devem aparecer no PITMUNEWS.
+
+---
+**TEXTO DE ORIGEM (SEÇÕES TEMÁTICAS):**
+\`\`\`
+${textoNoticias2}
+\`\`\`
+**JOGOS GRÁTIS DA EPIC GAMES HOJE:**
+${jogosGratis}
+---
+
+**INSTRUÇÕES DETALHADAS:**
+
+1.  **PROCESSE AS SEGUINTES SEÇÕES DE NOTÍCIAS (usando a REGRA DE EXTRAÇÃO):**
+    -   \`SAÚDE\`
+    -   \`TECNOLOGIA & CIÊNCIA\`
+    -   \`GAMES\` (nesta seção, adicione a linha do jogo grátis da Epic, se houver, no formato "🎁 **Grátis na Epic:** [Nomes dos Jogos]").
+    -   \`ECONOMIA\` (no final desta seção, adicione a linha de indicadores no formato EXATO: \`📊 Indicadores: Dólar [valor] [emoji] | Euro [valor] [emoji] | Bitcoin [valor] [emoji] | Petróleo [valor] [emoji]\`)
+    -   \`ESPORTES\`
+    -   \`FAMA & ENTRETENIMENTO\`
+    -   \`MORTES\`
+    -   \`FAKENEWS\`
+
+2.  **RODAPÉ OBRIGATÓRIO:**
+    -   Finalize seu texto com este bloco EXATO:
+
+📨 Você está lendo PITMUNEWS
+🧠 Criado com: TogetherAI, VINIMUNEWS e APIs
+🤖 Distribuído automaticamente pelo Botzin do ZipZop
+`;
+}
 
 async function handleAutomaticNews(message, client) {
     try {
-        const editionNumber = incrementEditionNumber();
+        console.log("Iniciando processamento do VINIMUNEWS...");
         const textoCompletoDoEditor = message.body;
 
-        const textoTruncado = truncateText(textoCompletoDoEditor, 12000);
-
-        const freeGames = await fetchEpicFreeGames();
-        let freeGamesText = "Nenhum jogo grátis encontrado hoje.";
-        if (freeGames && freeGames.length > 0) {
-            freeGamesText = freeGames.join('\n');
+        let mensagemAniversario = '';
+        const aniversariantesDoDia = checkAniversariantes(textoCompletoDoEditor);
+        if (aniversariantesDoDia.length > 0) {
+            const nomes = aniversariantesDoDia.join(' e ');
+            mensagemAniversario = `🎂🎉 FELIZ ANIVERSÁRIO, ${nomes}! 🎉🎂\n\nUm beijão na vossa teta esquerda, muita saúde, dinheiro, falta doq fazer, e muitas felicidades!!!!\n\n`;
+            console.log(`Aniversário detectado para: ${nomes}`);
         }
-        
-        const promptTemplate = getPromptTemplate();
-        const finalPrompt = promptTemplate
-            .replace('${editionNumber}', editionNumber)
-            .replace('${textoCompletoDoEditor}', textoTruncado)
-            .replace('${jogosGratisEpic}', freeGamesText);
-        
-        const jornal = await perguntarIA([
-            { role: "system", content: "Você é um assistente de redação de jornal automatizado." },
-            { role: "user", content: finalPrompt }
-        ]);
 
-        if (jornal.toLowerCase().includes("erro no jornal")) {
-            console.warn("Geração do jornal abortada pela IA. O texto do editor pode estar vazio ou ser insuficiente.");
-            await message.reply("Não foi possível gerar o jornal. O texto de origem parece estar vazio ou incompleto.");
+        const partes = splitViniMunews(textoCompletoDoEditor);
+        if (!partes) {
+            await message.reply("Falha ao processar: a estrutura do VINIMUNEWS não pôde ser reconhecida. Verifique os marcadores de seção.");
             return;
         }
+        console.log("Jornal dividido em 3 partes com sucesso.");
+
+        const editionNumber = incrementEditionNumber();
+        const freeGames = await fetchEpicFreeGames();
+        let freeGamesText = "Nenhum jogo grátis encontrado hoje.";
+        if (freeGames.length > 0) {
+            freeGamesText = freeGames.join(' | ');
+        }
+
+        const prompt1 = getPromptParte1(partes.introducao, editionNumber);
+        const prompt2 = getPromptParte2(partes.secaoNoticias1);
+        const prompt3 = getPromptParte3(partes.secaoNoticias2, freeGamesText);
+
+        const systemMessage = { role: "system", content: "Você é um assistente de redação de jornal automatizado, focado em seguir instruções precisamente para criar seções de um jornal." };
+
+        console.log("Enviando Parte 1 para a IA...");
+        const resultadoParte1 = await perguntarIA([systemMessage, { role: "user", content: prompt1 }]);
+
+        console.log("Aguardando 12 segundos para evitar rate limit...");
+        await delay(12000);
+
+        console.log("Enviando Parte 2 para a IA...");
+        const resultadoParte2 = await perguntarIA([systemMessage, { role: "user", content: prompt2 }]);
+
+        console.log("Aguardando 12 segundos para evitar rate limit...");
+        await delay(12000);
+
+        console.log("Enviando Parte 3 para a IA...");
+        const resultadoParte3 = await perguntarIA([systemMessage, { role: "user", content: prompt3 }]);
+        
+        console.log("Todas as partes recebidas da IA.");
+        
+        const jornalGerado = [resultadoParte1, resultadoParte2, resultadoParte3].join('\n\n');
+        const jornalCompleto = mensagemAniversario + jornalGerado;
 
         const allChats = await client.getChats();
         const targetGroups = allChats.filter(c => c.isGroup && chatWithNewsletter.includes(c.name));
 
         if (targetGroups.length > 0) {
+            console.log(`Enviando PITMUNEWS Nº ${editionNumber} para ${targetGroups.length} grupo(s).`);
             for (const group of targetGroups) {
-                await client.sendMessage(group.id._serialized, jornal);
-                
-                const stickerPath = path.join(__dirname, '../Newsletter.webp');
-                if (fs.existsSync(stickerPath)) {
-                    const stickerMedia = MessageMedia.fromFilePath(stickerPath);
-                    await client.sendMessage(group.id._serialized, stickerMedia, { sendMediaAsSticker: true });
+                await client.sendMessage(group.id._serialized, jornalCompleto);
+            }
+            const stickerPath = path.join(__dirname, '../Newsletter.webp');
+            if (fs.existsSync(stickerPath)) {
+                const stickerMedia = MessageMedia.fromFilePath(stickerPath);
+                for (const group of targetGroups) {
+                     await client.sendMessage(group.id._serialized, stickerMedia, { sendMediaAsSticker: true });
                 }
             }
+            console.log("Envio concluído com sucesso.");
         } else {
-            await message.reply("Jornal gerado, mas nenhum grupo de destino foi encontrado.");
+            console.warn("Jornal gerado, mas nenhum grupo de destino foi encontrado.");
+            await message.reply(jornalCompleto);
         }
     } catch (error) {
-        console.error("Erro ao gerar jornal automático:", error);
+        console.error("Erro no fluxo principal de handleAutomaticNews:", error);
         const errorMessage = error.response?.data?.error?.message || error.message;
-        await message.reply(`Ocorreu um erro ao tentar gerar ou enviar o jornal. Detalhe: ${errorMessage}`);
+        await message.reply(`Ocorreu um erro crítico ao gerar ou enviar o jornal. Detalhe: ${errorMessage}`);
     }
 }
 
-/**
- * @param {import('whatsapp-web.js').Message} message
- * @param {import('whatsapp-web.js').Client} client 
- * @returns {Promise<boolean>} 
- */
 async function handleNewsCommands(message, client) {
     const contact = await message.getContact();
     if (contact.name === "Newsletter") {
