@@ -9,8 +9,35 @@ const chatWithNewsletter = ["T . D . A . P .", "Laranja Cremosa"];
 const COUNTER_FILE = path.join(__dirname, '../pitmunews_counter.json');
 
 const ANIVERSARIANTES_ESPECIAIS = [
+    { nome: 'Luiz', data: '27/01' },
+    { nome: 'Pedrin', data: '08/02' },
+    { nome: 'Liz', data: '09/02' },
+    { nome: 'Laila', data: '17/02' },
+    { nome: 'Dani', data: '03/03' },
+    { nome: 'Roger', data: '07/03' },
+    { nome: 'Xivana', data: '21/03' },
+    { nome: 'Mel', data: '13/04' },
+    { nome: 'Lidi', data: '21/05' },
+    { nome: 'Evelyn', data: '08/06' },
+    { nome: 'Nic', data: '08/06' },
+    { nome: 'Felipinho', data: '09/06' },
+    { nome: 'Xumas', data: '19/06' },
+    { nome: 'Mary', data: '21/06' },
+    { nome: 'Raissa', data: '26/06' },
+    { nome: 'Gregorio', data: '05/07' },
+    { nome: 'Bia', data: '13/07' },
     { nome: 'Pietro', data: '01/09' },
-    { nome: 'Vitor', data: '01/09' }
+    { nome: 'Vito', data: '01/09' },
+    { nome: 'Kevin', data: '22/09' },
+    { nome: 'Layzer', data: '04/11' },
+    { nome: 'Rebs', data: '24/11' },
+    { nome: 'Casari', data: '17/12' },
+    { nome: 'Heitor', data: '17/12' },
+    { nome: 'Fernando', data: '16/12' },
+    { nome: 'SrQuirino', data: '19/12' },
+    { nome: 'Tirado', data: '26/12' },
+    { nome: 'Marcola', data: '28/12' },
+    { nome: 'Rogréio', data: '29/12' }
 ];
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
