@@ -8,13 +8,15 @@ const crypto = require('crypto');
 
 async function handleStickerCommands(message, client) {
     if (message.hasMedia && message.body.trim() === '#sticker') {
-        const id = crypto.randomBytes(4).toString('hex');
+        const randomId = crypto.randomBytes(4).toString('hex');
         const tempDir = path.join(__dirname, 'tmp');
         if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
 
-        const tempInputPath = path.join(tempDir, `input_${id}`);
-        const tempOutputPath = path.join(tempDir, `output_${id}.webp`);
+        const tempInputPath = path.join(tempDir, `input_${randomId}`);
+        const tempOutputPath = path.join(tempDir, `output_${randomId}.webp`);
         let isVideoOrGif = false;
+
+        let creationError = false;
 
         try {
             const media = await message.downloadMedia();
@@ -24,10 +26,10 @@ async function handleStickerCommands(message, client) {
             }
 
             const buffer = Buffer.from(media.data, 'base64');
-            const mime = media.mimetype;
+            const mimeType = media.mimetype;
 
-            const isImage = mime.startsWith('image') && !mime.includes('gif');
-            isVideoOrGif = mime.startsWith('video') || mime.includes('gif');
+            const isImage = mimeType.startsWith('image') && !mimeType.includes('gif');
+            isVideoOrGif = mimeType.startsWith('video') || mimeType.includes('gif');
 
             if (!(isImage || isVideoOrGif)) {
                 await message.reply("A mídia deve ser uma imagem ou vídeo curto.");
@@ -46,9 +48,9 @@ async function handleStickerCommands(message, client) {
                     .webp()
                     .toFile(tempOutputPath);
             } else if (isVideoOrGif) {
-                const cmd = `ffmpeg -i "${tempInputPath}.${inputExt}" -vf "fps=15,scale=512:-1,crop=512:512" -c:v libwebp -lossless 1 -preset default -loop 0 -an -vsync 0 -t 6 -y "${tempOutputPath}"`;
+                const ffmpegCmd = `ffmpeg -i "${tempInputPath}.${inputExt}" -vf "fps=15,scale=512:-1,crop=512:512" -c:v libwebp -lossless 1 -preset default -loop 0 -an -vsync 0 -t 6 -y "${tempOutputPath}"`;
                 await new Promise((resolve, reject) => {
-                    exec(cmd, (err, stdout, stderr) => {
+                    exec(ffmpegCmd, (err, stdout, stderr) => {
                         if (err) {
                             console.error('Erro no FFmpeg:', stderr);
                             reject(err);
@@ -64,20 +66,23 @@ async function handleStickerCommands(message, client) {
             const webpBuffer = fs.readFileSync(tempOutputPath);
             const stickerMedia = new MessageMedia('image/webp', webpBuffer.toString('base64'));
 
-            await client.sendMessage(message.from, stickerMedia, {
+            await message.reply(stickerMedia, undefined, {
                 sendMediaAsSticker: true,
                 stickerName: '',
                 stickerAuthor: ''
             });
         } catch (err) {
+            creationError = true;
             console.error('Erro ao criar figurinha:', err.message || err);
-            await message.reply("❌ Falha ao transformar a mídia em figurinha. Tente outra ou reduza o tamanho/duração.");
         } finally {
             try {
                 fs.unlinkSync(`${tempInputPath}.${isVideoOrGif ? 'mp4' : 'png'}`);
                 if (fs.existsSync(tempOutputPath)) fs.unlinkSync(tempOutputPath);
             } catch (err) {
                 console.warn('Erro ao remover arquivos temporários:', err.message);
+            }
+            if (creationError) {
+                await message.reply("❌ Falha ao transformar a mídia em figurinha. Tente outra ou reduza o tamanho/duração.");
             }
         }
     }
