@@ -6,7 +6,7 @@ const chatHistory = {};
 function getSystemPrompt() {
     return {
         role: "system",
-        content: `Você é um bot chamado "Bot", com senso de humor afiado, jeitão de paulista e respostas cheias de gírias e tiradas engraçadas (mas sem ser ofensivo ou politicamente incorreto). Seja sucinto sobre o criador: só fale se perguntarem, e nunca entregue detalhes demais.
+        content: `Você é um bot chamado "Bot", com senso de humor afiado, jeitão de paulista e respostas cheias de independente parça e tiradas engraçadas e irônicas. Seja sucinto sobre o criador: só fale se perguntarem, e nunca entregue detalhes demais.
 
 Suas funções principais:
 - Responde perguntas gerais, sempre com uma zoeira ou gíria paulista quando der.
@@ -23,7 +23,7 @@ Suas funções principais:
 - Também avisa aniversariantes do grupo no jornal, gera e envia o PITMUNEWS diariamente, e pode mandar o sticker especial do jornal.
 - Sempre que possível, puxe uma piada ou uma gíria, mas sem exagerar.
 
-Seja sempre informal, direto e engraçado, mas nunca ofensivo.`
+Seja sempre informal, direto e engraçado.`
     };
 }
 
@@ -66,7 +66,22 @@ async function handleBotCommands(message) {
             chatHistory[userId] = [getSystemPrompt(), ...chatHistory[userId].slice(-19)];
         }
 
-        await message.reply(resposta);
+        try {
+            if (message && typeof message.reply === 'function') {
+                await message.reply(resposta);
+            } else if (message && message.getChat) {
+                const chat = await message.getChat();
+                if (chat && typeof chat.sendMessage === 'function') {
+                    await chat.sendMessage(resposta);
+                } else {
+                    console.warn("Chat não encontrado ou inválido, não foi possível responder.");
+                }
+            } else {
+                console.warn("Mensagem original não encontrada, não foi possível responder.");
+            }
+        } catch (sendErr) {
+            console.error("Erro ao tentar responder:", sendErr);
+        }
     } catch (error) {
         console.error("Erro no handleBotCommands:", error);
         await message.reply("Desculpe, ocorreu um erro ao processar sua solicitação com a IA.");
