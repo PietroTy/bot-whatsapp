@@ -102,22 +102,48 @@ function checkAniversariantes(textoDoJornal) {
 
 function splitViniMunews(textoCompleto) {
     const inicioSecaoNoticias1 = '*🇧🇷 BRASIL GERAL*';
-    const inicioSecaoNoticias2 = '*💓 SAÚDE 💓*';
-    const inicioSecaoNoticias3 = '*💰 ECONOMIA*';
+    const possiveisSecoes2 = [
+        '*💓 SAÚDE 💓*',
+        '*💻 TECNOLOGIA & CIÊNCIA*',
+        '*🎮 GAMES*'
+    ];
+    const possiveisSecoes3 = [
+        '*💰 ECONOMIA*',
+        '*⚽🏀 ESPORTES*',
+        '*🌟 FAMA & ENTRETENIMENTO*'
+    ];
 
     const index1 = textoCompleto.indexOf(inicioSecaoNoticias1);
-    const index2 = textoCompleto.indexOf(inicioSecaoNoticias2);
-    const index3 = textoCompleto.indexOf(inicioSecaoNoticias3);
-
-    if (index1 === -1 || index2 === -1 || index3 === -1) {
-        console.error("Não foi possível dividir o jornal. Um ou mais marcadores de seção não foram encontrados.");
+    if (index1 === -1) {
+        console.error("Seção 'BRASIL GERAL' não encontrada.");
         return null;
     }
 
+    let index2 = -1;
+    for (const secao of possiveisSecoes2) {
+        const i = textoCompleto.indexOf(secao, index1);
+        if (i !== -1 && i > index1) {
+            index2 = i;
+            break;
+        }
+    }
+
+    let index3 = -1;
+    for (const secao of possiveisSecoes3) {
+        const i = textoCompleto.indexOf(secao, index2 !== -1 ? index2 : index1);
+        if (i !== -1 && i > (index2 !== -1 ? index2 : index1)) {
+            index3 = i;
+            break;
+        }
+    }
+
     const introducao = textoCompleto.substring(0, index1);
-    const secaoNoticias1 = textoCompleto.substring(index1, index2);
-    const secaoNoticias2 = textoCompleto.substring(index2, index3);
-    const secaoNoticias3 = textoCompleto.substring(index3);
+    const secaoNoticias1 = index2 !== -1 ? textoCompleto.substring(index1, index2) : 
+                            index3 !== -1 ? textoCompleto.substring(index1, index3) : 
+                            textoCompleto.substring(index1);
+
+    const secaoNoticias2 = index2 !== -1 ? (index3 !== -1 ? textoCompleto.substring(index2, index3) : textoCompleto.substring(index2)) : '';
+    const secaoNoticias3 = index3 !== -1 ? textoCompleto.substring(index3) : '';
 
     return { introducao, secaoNoticias1, secaoNoticias2, secaoNoticias3 };
 }
@@ -261,7 +287,7 @@ async function handleAutomaticNews(message, client) {
             await message.reply("Falha ao processar: a estrutura do VINIMUNEWS não pôde ser reconhecida. Verifique os marcadores de seção.");
             return;
         }
-        console.log("Jornal dividido em 3 partes com sucesso.");
+        console.log("Jornal dividido em 4 partes com sucesso.");
 
         const editionNumber = incrementEditionNumber();
         const freeGames = await fetchEpicFreeGames();
