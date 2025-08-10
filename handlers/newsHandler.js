@@ -269,6 +269,52 @@ ${textoNoticias2}
 `;
 }
 
+async function fetchLatestYoutubeVideo(channelId, apiKey) {
+    const url = `https://www.googleapis.com/youtube/v3/search?key=${apiKey}&channelId=${channelId}&order=date&part=snippet&type=video&maxResults=1`;
+    try {
+        const response = await axios.get(url);
+        const video = response.data.items[0];
+        if (!video) return null;
+        return `https://www.youtube.com/watch?v=${video.id.videoId}`;
+    } catch (error) {
+        console.error("Erro ao buscar vídeo do YouTube:", error.message);
+        return null;
+    }
+}
+
+async function processarParteIA(prompt, parteIndex) {
+    let tentativas = 0;
+    let sucesso = false;
+    let resultado = null;
+
+    while (tentativas < 3 && !sucesso) {
+        try {
+            tentativas++;
+            console.log(`Enviando Parte ${parteIndex + 1} para a IA...`);
+            resultado = await perguntarIA(prompt);
+            console.log(`Parte ${parteIndex + 1} processada com sucesso!`);
+            sucesso = true;
+        } catch (error) {
+            console.error(`Erro ao processar Parte ${parteIndex + 1} (Tentativa ${tentativas}):`, error.message);
+
+            const isTemporaryError =
+                error?.error?.type === "service_unavailable" ||
+                error?.code === 503 ||
+                error?.code === "ECONNRESET" ||
+                error?.code === "ETIMEDOUT";
+
+            if (isTemporaryError && tentativas < 3) {
+                const delayRetry = tentativas * 5000; // 5s, depois 10s, depois 15s
+                console.log(`⏳ Aguardando ${delayRetry / 1000} segundos antes de tentar novamente...`);
+                await new Promise(res => setTimeout(res, delayRetry));
+            } else {
+                throw new Error("Falha na comunicação com a IA.");
+            }
+        }
+    }
+    return resultado;
+}
+
 async function handleAutomaticNews(message, client) {
     try {
         console.log("Iniciando processamento do VINIMUNEWS...");
@@ -296,37 +342,42 @@ async function handleAutomaticNews(message, client) {
             freeGamesText = freeGames.join(' | ');
         }
 
+        const channelId = 'UCLzb8VJaApoEZ6Bbmmq-oEA';
+        const apiKey = process.env.YT_API_KEY;
+        const latestVideoUrl = await fetchLatestYoutubeVideo(channelId, apiKey);
+        const videoMsg = latestVideoUrl
+            ? `👁️ Última mensagem do Mestre:\n ${latestVideoUrl} \n`
+            : 'Não foi possível carregar o vídeo do Mestre hoje.\n';
+
         const prompt1 = getPromptParte1(partes.introducao, editionNumber);
         const prompt2 = getPromptParte2(partes.secaoNoticias1);
         const prompt3 = getPromptParte3(partes.secaoNoticias2, freeGamesText);
+        const prompt4 = getPromptParte4(partes.secaoNoticias3);
 
         const systemMessage = { role: "system", content: "Você é um assistente de redação de jornal automatizado, focado em seguir instruções precisamente para criar seções de um jornal." };
 
-        console.log("Enviando Parte 1 para a IA...");
-        const resultadoParte1 = await perguntarIA([systemMessage, { role: "user", content: prompt1 }]);
-
-        console.log("Aguardando 12 segundos para evitar rate limit...");
+        const resultadoParte1 = await processarParteIA([systemMessage, { role: "user", content: prompt1 }], 0);
         await delay(12000);
 
-        console.log("Enviando Parte 2 para a IA...");
-        const resultadoParte2 = await perguntarIA([systemMessage, { role: "user", content: prompt2 }]);
-
-        console.log("Aguardando 12 segundos para evitar rate limit...");
+        const resultadoParte2 = await processarParteIA([systemMessage, { role: "user", content: prompt2 }], 1);
         await delay(12000);
 
-        console.log("Enviando Parte 3 para a IA...");
-        const resultadoParte3 = await perguntarIA([systemMessage, { role: "user", content: getPromptParte3(partes.secaoNoticias2, freeGamesText) }]);
-
-        console.log("Aguardando 12 segundos para evitar rate limit...");
+        const resultadoParte3 = await processarParteIA([systemMessage, { role: "user", content: prompt3 }], 2);
         await delay(12000);
 
-        console.log("Enviando Parte 4 para a IA...");
-        const resultadoParte4 = await perguntarIA([systemMessage, { role: "user", content: getPromptParte4(partes.secaoNoticias3) }]);
+        const resultadoParte4 = await processarParteIA([systemMessage, { role: "user", content: prompt4 }], 3);
 
         console.log("Todas as partes recebidas da IA.");
-        
-        const jornalGerado = [resultadoParte1, resultadoParte2, resultadoParte3, resultadoParte4].join('\n\n');
-        const jornalCompleto = mensagemAniversario + jornalGerado;
+
+        const jornalGerado = [
+            mensagemAniversario + resultadoParte1,
+            videoMsg,                              
+            resultadoParte2,                       
+            resultadoParte3,                       
+            resultadoParte4                        
+        ].join('\n\n');
+
+        const jornalCompleto = jornalGerado;
 
         const allChats = await client.getChats();
         const targetGroups = allChats.filter(c => c.isGroup && chatWithNewsletter.includes(c.name));
