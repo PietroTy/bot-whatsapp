@@ -7,7 +7,7 @@ const { exec } = require('child_process');
 const crypto = require('crypto');
 
 async function handleStickerCommands(message, client) {
-    if (message.hasMedia && message.body.trim() === '#sticker') {
+    async function processMedia(media, from, originalMessage) {
         const id = crypto.randomBytes(4).toString('hex');
         const tempDir = path.join(__dirname, 'tmp');
         if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
@@ -17,9 +17,8 @@ async function handleStickerCommands(message, client) {
         let isVideoOrGif = false;
 
         try {
-            const media = await message.downloadMedia();
             if (!media) {
-                await message.reply("Erro ao baixar a mídia.");
+                await originalMessage.reply("Erro ao baixar a mídia.");
                 return;
             }
 
@@ -30,7 +29,7 @@ async function handleStickerCommands(message, client) {
             isVideoOrGif = mime.startsWith('video') || mime.includes('gif');
 
             if (!(isImage || isVideoOrGif)) {
-                await message.reply("A mídia deve ser uma imagem ou vídeo curto.");
+                await originalMessage.reply("A mídia deve ser uma imagem ou vídeo curto.");
                 return;
             }
 
@@ -66,14 +65,14 @@ async function handleStickerCommands(message, client) {
             const webpBuffer = fs.readFileSync(tempOutputPath);
             const stickerMedia = new MessageMedia('image/webp', webpBuffer.toString('base64'));
 
-            await client.sendMessage(message.from, stickerMedia, {
+            await client.sendMessage(from, stickerMedia, {
                 sendMediaAsSticker: true,
                 stickerName: '',
                 stickerAuthor: ''
             });
         } catch (err) {
             console.error('Erro ao criar figurinha:', err.message || err);
-            await message.reply("❌ Falha ao transformar a mídia em figurinha. Tente outra ou reduza o tamanho/duração.");
+            await originalMessage.reply("Falha ao transformar a mídia em figurinha, ela deve ter no `máximo 6 segundos`.");
         } finally {
             try {
                 let inputExt;
@@ -92,6 +91,21 @@ async function handleStickerCommands(message, client) {
             } catch (err) {
                 console.warn('Erro ao remover arquivos temporários:', err.message);
             }
+        }
+    }
+
+    if (message.hasMedia && message.body.trim().toLowerCase() === '#sticker') {
+        const media = await message.downloadMedia();
+        await processMedia(media, message.from, message);
+        return;
+    }
+
+    if (message.hasQuotedMsg && message.body.trim().toLowerCase() === '#sticker') {
+        const quotedMsg = await message.getQuotedMessage();
+        if (quotedMsg.hasMedia) {
+            const media = await quotedMsg.downloadMedia();
+            await processMedia(media, message.from, message);
+            return;
         }
     }
 
