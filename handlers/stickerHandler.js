@@ -46,7 +46,9 @@ async function handleStickerCommands(message, client) {
                     .webp()
                     .toFile(tempOutputPath);
             } else if (isVideoOrGif) {
-                const cmd = `ffmpeg -i "${tempInputPath}.${inputExt}" -vf "fps=15,scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=0x00000000" -c:v libwebp -lossless 1 -preset default -loop 0 -an -fps_mode passthrough -t 6 -y "${tempOutputPath}"`;
+                const cmd = `ffmpeg -i "${tempInputPath}.${inputExt}" \
+                -vf "fps=15,scale=512:512:force_original_aspect_ratio=increase,crop=512:512" \
+                -c:v libwebp -lossless 1 -preset default -loop 0 -an -fps_mode passthrough -t 6 -y "${tempOutputPath}"`;
                 await new Promise((resolve, reject) => {
                     exec(cmd, (err, stdout, stderr) => {
                         if (err) {
@@ -74,8 +76,19 @@ async function handleStickerCommands(message, client) {
             await message.reply("❌ Falha ao transformar a mídia em figurinha. Tente outra ou reduza o tamanho/duração.");
         } finally {
             try {
-                fs.unlinkSync(`${tempInputPath}.${isVideoOrGif ? 'mp4' : 'png'}`);
-                if (fs.existsSync(tempOutputPath)) fs.unlinkSync(tempOutputPath);
+                let inputExt;
+                if (typeof isVideoOrGif === 'boolean') {
+                    inputExt = isVideoOrGif ? 'mp4' : 'png';
+                }
+                if (inputExt) {
+                    const inputFile = `${tempInputPath}.${inputExt}`;
+                    if (fs.existsSync(inputFile)) {
+                        fs.unlinkSync(inputFile);
+                    }
+                }
+                if (fs.existsSync(tempOutputPath)) {
+                    fs.unlinkSync(tempOutputPath);
+                }
             } catch (err) {
                 console.warn('Erro ao remover arquivos temporários:', err.message);
             }
