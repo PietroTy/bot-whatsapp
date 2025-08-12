@@ -26,6 +26,7 @@ const ANIVERSARIANTES_ESPECIAIS = [
     { nome: 'Raissa', data: '26/06' },
     { nome: 'Gregorio', data: '05/07' },
     { nome: 'Bia', data: '13/07' },
+    { nome: 'Arroz', data: '12/08' },
     { nome: 'Pietro', data: '01/09' },
     { nome: 'Vito', data: '01/09' },
     { nome: 'Kevin', data: '22/09' },
@@ -284,36 +285,47 @@ async function fetchLatestYoutubeVideo(channelId, apiKey) {
 
 async function processarParteIA(prompt, parteIndex) {
     let tentativas = 0;
-    let sucesso = false;
-    let resultado = null;
+    const maxTentativas = 5;
 
-    while (tentativas < 3 && !sucesso) {
+    while (tentativas < maxTentativas) {
         try {
             tentativas++;
-            console.log(`Enviando Parte ${parteIndex + 1} para a IA...`);
-            resultado = await perguntarIA(prompt);
+            console.log(`Enviando Parte ${parteIndex + 1} para a IA ${tentativas}/5...`);
+            const resultado = await perguntarIA(prompt);
             console.log(`Parte ${parteIndex + 1} processada com sucesso!`);
-            sucesso = true;
+            return resultado;
         } catch (error) {
-            console.error(`Erro ao processar Parte ${parteIndex + 1} (Tentativa ${tentativas}):`, error.message);
-
+            const errorMessage = error.message || "";
+            const isRateLimitError = error?.error?.type === "model_rate_limit" || errorMessage.includes("rate limit");
             const isTemporaryError =
+                isRateLimitError ||
                 error?.error?.type === "service_unavailable" ||
                 error?.code === 503 ||
                 error?.code === "ECONNRESET" ||
                 error?.code === "ETIMEDOUT";
+            
+            console.error(`Erro ao processar Parte ${parteIndex + 1} (Tentativa ${tentativas}):`, errorMessage);
 
-            if (isTemporaryError && tentativas < 3) {
-                const delayRetry = tentativas * 5000; // 5s, depois 10s, depois 15s
+            if (isTemporaryError && tentativas < maxTentativas) {
+                let delayRetry;
+                if (isRateLimitError) {
+                    delayRetry = 60000 + (tentativas * 20000);
+                    console.log(`Rate limit atingido. Aguardando um tempo maior para a próxima tentativa...`);
+                } else {
+                    delayRetry = Math.pow(2, tentativas) * 5000;
+                }
+                
                 console.log(`⏳ Aguardando ${delayRetry / 1000} segundos antes de tentar novamente...`);
                 await new Promise(res => setTimeout(res, delayRetry));
             } else {
-                throw new Error("Falha na comunicação com a IA.");
+                console.error("Falha definitiva na comunicação com a IA após múltiplas tentativas.");
+                throw new Error("Falha na comunicação com a IA após múltiplas tentativas.");
             }
         }
     }
-    return resultado;
+    throw new Error("Falha ao processar a parte na IA.");
 }
+
 
 async function handleAutomaticNews(message, client) {
     try {
@@ -346,7 +358,7 @@ async function handleAutomaticNews(message, client) {
         const apiKey = process.env.YT_API_KEY;
         const latestVideoUrl = await fetchLatestYoutubeVideo(channelId, apiKey);
         const videoMsg = latestVideoUrl
-            ? `👁️ Última mensagem do Mestre:\n ${latestVideoUrl} \n`
+            ? `👁️ Última mensagem do Mestre:\n ${latestVideoUrl} `
             : 'Não foi possível carregar o vídeo do Mestre hoje.\n';
 
         const prompt1 = getPromptParte1(partes.introducao, editionNumber);
@@ -355,15 +367,17 @@ async function handleAutomaticNews(message, client) {
         const prompt4 = getPromptParte4(partes.secaoNoticias3);
 
         const systemMessage = { role: "system", content: "Você é um assistente de redação de jornal automatizado, focado em seguir instruções precisamente para criar seções de um jornal." };
+        
+        const DELAY_ENTRE_PARTES = 200000; // 200 segundos
 
         const resultadoParte1 = await processarParteIA([systemMessage, { role: "user", content: prompt1 }], 0);
-        await delay(12000);
+        await delay(DELAY_ENTRE_PARTES);
 
         const resultadoParte2 = await processarParteIA([systemMessage, { role: "user", content: prompt2 }], 1);
-        await delay(12000);
+        await delay(DELAY_ENTRE_PARTES);
 
         const resultadoParte3 = await processarParteIA([systemMessage, { role: "user", content: prompt3 }], 2);
-        await delay(12000);
+        await delay(DELAY_ENTRE_PARTES);
 
         const resultadoParte4 = await processarParteIA([systemMessage, { role: "user", content: prompt4 }], 3);
 
