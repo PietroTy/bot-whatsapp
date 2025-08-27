@@ -222,7 +222,7 @@ Você é um editor de jornal digital (PITMUNEWS) que segue regras de formataçã
 - Mantenha os emojis originais no início de cada manchete.
 - NÃO adicione manchetes novas.
 - NÃO use asteriscos.
-- Remova fontes no final da linha, se houver (ex: "(CNN)", "(POD360)", etc).
+- Remova fontes no final da linha, se houver (ex: "(CNN)", "(POD360)", etc) e não coloque ''' para formatar o texto (nem qualquer tipo de formatação extra).
 - Para cada manchete, escreva uma linha independente com o emoji no início.
 - Comece cada seção com seu título em destaque, decorado com emojis antes e depois. Exemplo:
   💓 SAÚDE 💓
@@ -260,7 +260,7 @@ Você é um editor de jornal digital (PITMUNEWS). Sua tarefa é criar a parte de
 - Finalize seu texto com este rodapé **EXATO**:
 
 📨 Você está lendo PITMUNEWS  
-🧠 Criado com: TogetherAI, VINIMUNEWS e APIs  
+🧠 Criado com: MaritacaAI, VINIMUNEWS e APIs  
 🤖 Distribuído automaticamente pelo Botzin do ZipZop
 
 **TEXTO ORIGINAL:**
@@ -285,47 +285,27 @@ async function fetchLatestYoutubeVideo(channelId, apiKey) {
 
 async function processarParteIA(prompt, parteIndex) {
     let tentativas = 0;
-    const maxTentativas = 5;
+    const maxTentativas = 3;
 
     while (tentativas < maxTentativas) {
         try {
             tentativas++;
-            console.log(`Enviando Parte ${parteIndex + 1} para a IA ${tentativas}/5...`);
+            console.log(`Enviando Parte ${parteIndex + 1} para a IA (tentativa ${tentativas}/${maxTentativas})...`);
             const resultado = await perguntarIA(prompt);
             console.log(`Parte ${parteIndex + 1} processada com sucesso!`);
             return resultado;
         } catch (error) {
-            const errorMessage = error.message || "";
-            const isRateLimitError = error?.error?.type === "model_rate_limit" || errorMessage.includes("rate limit");
-            const isTemporaryError =
-                isRateLimitError ||
-                error?.error?.type === "service_unavailable" ||
-                error?.code === 503 ||
-                error?.code === "ECONNRESET" ||
-                error?.code === "ETIMEDOUT";
-            
-            console.error(`Erro ao processar Parte ${parteIndex + 1} (Tentativa ${tentativas}):`, errorMessage);
-
-            if (isTemporaryError && tentativas < maxTentativas) {
-                let delayRetry;
-                if (isRateLimitError) {
-                    delayRetry = 60000 + (tentativas * 20000);
-                    console.log(`Rate limit atingido. Aguardando um tempo maior para a próxima tentativa...`);
-                } else {
-                    delayRetry = Math.pow(2, tentativas) * 5000;
-                }
-                
-                console.log(`⏳ Aguardando ${delayRetry / 1000} segundos antes de tentar novamente...`);
-                await new Promise(res => setTimeout(res, delayRetry));
+            console.error(`Erro ao processar Parte ${parteIndex + 1} (Tentativa ${tentativas}):`, error.message);
+            if (tentativas < maxTentativas) {
+                console.log("Aguardando 60 segundos antes de tentar novamente...");
+                await delay(60 * 1000);
             } else {
-                console.error("Falha definitiva na comunicação com a IA após múltiplas tentativas.");
-                throw new Error("Falha na comunicação com a IA após múltiplas tentativas.");
+                throw new Error("Falha definitiva após 3 tentativas.");
             }
         }
     }
     throw new Error("Falha ao processar a parte na IA.");
 }
-
 
 async function handleAutomaticNews(message, client) {
     try {
@@ -368,7 +348,7 @@ async function handleAutomaticNews(message, client) {
 
         const systemMessage = { role: "system", content: "Você é um assistente de redação de jornal automatizado, focado em seguir instruções precisamente para criar seções de um jornal." };
         
-        const DELAY_ENTRE_PARTES = 200000; // 200 segundos
+        const DELAY_ENTRE_PARTES = 10000;
 
         const resultadoParte1 = await processarParteIA([systemMessage, { role: "user", content: prompt1 }], 0);
         await delay(DELAY_ENTRE_PARTES);
