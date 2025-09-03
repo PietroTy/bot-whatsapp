@@ -5,7 +5,7 @@ const path = require('path');
 const { MessageMedia } = require('whatsapp-web.js');
 const { perguntarIA } = require('../services/aiService');
 
-const chatWithNewsletter = ["T . D . A . P .", "Laranja Cremosa"];
+const chatWithNewsletter = ["T . D . A . P .", "Laranja Cremosa", "Jor & Now"];
 const COUNTER_FILE = path.join(__dirname, '../pitmunews_counter.json');
 
 const ANIVERSARIANTES_ESPECIAIS = [
@@ -77,6 +77,27 @@ async function fetchEpicFreeGames() {
     } catch (error) {
         console.error("Erro ao buscar jogos grátis na Epic Games:", error.message);
         return [];
+    }
+}
+
+async function fetchEconomicIndicators() {
+    try {
+        const moedas = await axios.get("https://economia.awesomeapi.com.br/json/last/USD-BRL,EUR-BRL");
+        const usd = parseFloat(moedas.data.USDBRL.bid).toFixed(2);
+        const eur = parseFloat(moedas.data.EURBRL.bid).toFixed(2);
+
+        const btcRes = await axios.get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=brl");
+        const btc = btcRes.data.bitcoin.brl.toLocaleString("pt-BR");
+
+        const petroRes = await axios.get("https://query1.finance.yahoo.com/v8/finance/chart/CL=F");
+        const petro = petroRes.data.chart.result[0].meta.regularMarketPrice.toFixed(2);
+
+        const up = "📈";
+
+        return `📊 Indicadores: Dólar R$${usd} ${up} | Euro R$${eur} ${up} | Bitcoin R$${btc} ${up} | Petróleo US$${petro} ${up}`;
+    } catch (error) {
+        console.error("Erro ao buscar indicadores econômicos:", error.message);
+        return "📊 Indicadores: Não foi possível carregar hoje.";
     }
 }
 
@@ -154,8 +175,9 @@ function getPromptParte1(textoIntroducao, editionNumber) {
 Você é um editor de jornal digital (PITMUNEWS) com foco em design limpo e consistência. Sua tarefa é criar a **PARTE INTRODUTÓRIA** do jornal.
 
 **REGRAS DE FORMATAÇÃO GERAL:**
-- Para títulos de seção (ex: "HOJE É DIA...", "UTILIDADES"), use os emojis originais do texto-fonte.
-- **NUNCA use asteriscos \`*\` para formatar títulos.** Deixe os títulos limpos.
+- A saída deve ser **TEXTO PURO**.
+- **NUNCA use formatação markdown**, como \`*\`, \`###\` ou \`\`\`
+- Para títulos de seção (ex: "HOJE É DIA...", "UTILIDADES"), use os emojis originais do texto-fonte e deixe os títulos limpos.
 
 **TEXTO DE ORIGEM (INTRODUÇÃO DO VINIMUNEWS):**
 \`\`\`
@@ -190,7 +212,7 @@ function getPromptParte2(textoNoticias1) {
 Você é um editor de jornal digital (PITMUNEWS). Sua tarefa é **EXTRAIR E REFORMATAR** as manchetes da seção de notícias gerais.
 
 **REGRA DE EXTRAÇÃO (MUITO IMPORTANTE):**
-- Sua função é replicar a formatação original do VINIMUNEWS para as notícias.
+- Sua saída deve ser **TEXTO PURO**, sem formatação markdown (\`###\`, \`\`\`, etc).
 - Para **CADA** notícia das seções "🇧🇷 BRASIL GERAL", "🌎 INTERNACIONAL" e "🏞️ BRASIL REGIONAIS", você deve:
     1. Manter o emoji original (✍️, 🌎, 🚓, etc.).
     2. Manter o texto EXATO da manchete.
@@ -217,19 +239,19 @@ function getPromptParte3(textoNoticias2, jogosGratis) {
     return `
 Você é um editor de jornal digital (PITMUNEWS) que segue regras de formatação de maneira precisa. Sua tarefa é criar a parte de **TECNOLOGIA, SAÚDE E GAMES** do jornal.
 
-**REGRAS DE FORMATAÇÃO:**
+**REGRAS DE FORMATAÇÃO (MUITO IMPORTANTE):**
+- A saída final deve ser **TEXTO PURO**.
+- **NÃO use NENHUM tipo de formatação markdown**, como \`###\` para títulos ou \`\`\` para blocos de código.
 - Extraia APENAS as manchetes que já estiverem no texto abaixo.
 - Mantenha os emojis originais no início de cada manchete.
-- NÃO adicione manchetes novas.
-- NÃO use asteriscos.
-- Remova fontes no final da linha, se houver (ex: "(CNN)", "(POD360)", etc) e não coloque ''' para formatar o texto (nem qualquer tipo de formatação extra).
-- Para cada manchete, escreva uma linha independente com o emoji no início.
-- Comece cada seção com seu título em destaque, decorado com emojis antes e depois. Exemplo:
+- Remova fontes no final da linha (ex: "(CNN)").
+- Apresente cada manchete em uma linha separada.
+- Comece cada seção com seu título em uma nova linha, contendo apenas os emojis e o nome da seção. Exemplo:
   💓 SAÚDE 💓
   🧪 TECNOLOGIA & CIÊNCIA 🧪
   🎮 GAMES 🎮
 
-- Em GAMES, ao final da lista de manchetes, adicione esta linha com os jogos grátis:
+- Na seção GAMES, ao final da lista de manchetes, adicione esta linha:
 🎁 Grátis na Epic: ${jogosGratis}
 
 **TEXTO ORIGINAL:**
@@ -239,33 +261,34 @@ ${textoNoticias2}
 `;
 }
 
-function getPromptParte4(textoNoticias2) {
+function getPromptParte4(textoNoticias3, indicadores) {
     return `
 Você é um editor de jornal digital (PITMUNEWS). Sua tarefa é criar a parte de **ECONOMIA, ESPORTES E ENTRETENIMENTO**.
 
-**REGRAS DE FORMATAÇÃO:**
+**REGRAS DE FORMATAÇÃO (MUITO IMPORTANTE):**
+- A saída final deve ser **TEXTO PURO**.
+- **NÃO use NENHUM tipo de formatação markdown**, como \`###\` para títulos ou \`\`\` para blocos de código.
 - Extraia APENAS as manchetes dessas seções que já estiverem no texto abaixo.
 - Mantenha os emojis originais no início de cada manchete.
-- NÃO adicione novas manchetes.
-- NÃO use asteriscos.
 - Remova fontes no final da linha (ex: "(CNN)").
-- Comece cada seção com seu título em destaque, com emojis antes e depois. Exemplo:
+- Apresente cada manchete em uma linha separada.
+- Comece cada seção com seu título em uma nova linha, contendo apenas os emojis e o nome da seção. Exemplo:
   💰 ECONOMIA 💰
   🏆 ESPORTES 🏆
   🌟 FAMA & ENTRETENIMENTO 🌟
 
-- Em ECONOMIA, ao final da seção, adicione:
-📊 Indicadores: Dólar [valor] [emoji] | Euro [valor] [emoji] | Bitcoin [valor] [emoji] | Petróleo [valor] [emoji]
+- Na seção ECONOMIA, ao final da lista de manchetes, adicione a linha de indicadores:
+${indicadores}
 
 - Finalize seu texto com este rodapé **EXATO**:
 
-📨 Você está lendo PITMUNEWS  
-🧠 Criado com: MaritacaAI, VINIMUNEWS e APIs  
+📨 Você está lendo PITMUNEWS
+🧠 Criado com: MaritacaAI, VINIMUNEWS e APIs
 🤖 Distribuído automaticamente pelo Botzin do ZipZop
 
 **TEXTO ORIGINAL:**
 \`\`\`
-${textoNoticias2}
+${textoNoticias3}
 \`\`\`
 `;
 }
@@ -341,10 +364,11 @@ async function handleAutomaticNews(message, client) {
             ? `👁️ Última mensagem do Mestre:\n ${latestVideoUrl} `
             : 'Não foi possível carregar o vídeo do Mestre hoje.\n';
 
+        const indicadores = await fetchEconomicIndicators();
         const prompt1 = getPromptParte1(partes.introducao, editionNumber);
         const prompt2 = getPromptParte2(partes.secaoNoticias1);
         const prompt3 = getPromptParte3(partes.secaoNoticias2, freeGamesText);
-        const prompt4 = getPromptParte4(partes.secaoNoticias3);
+        const prompt4 = getPromptParte4(partes.secaoNoticias3, indicadores);
 
         const systemMessage = { role: "system", content: "Você é um assistente de redação de jornal automatizado, focado em seguir instruções precisamente para criar seções de um jornal." };
         
