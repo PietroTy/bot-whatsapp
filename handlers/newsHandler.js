@@ -6,7 +6,7 @@ const { MessageMedia } = require('whatsapp-web.js');
 const { perguntarIA } = require('../services/aiService');
 
 const chatWithNewsletter = ["T . D . A . P .", "Laranja Cremosa", "Jor & Now"];
-const COUNTER_FILE = path.join(__dirname, '../pitmunews_counter.json');
+const COUNTER_FILE = path.join(__dirname, 'assets/pitmunews_counter.json');
 
 const ANIVERSARIANTES_ESPECIAIS = [
     { nome: 'Luiz', data: '27/01' },
@@ -397,6 +397,21 @@ async function handleAutomaticNews(message, client) {
 
         const jornalCompleto = jornalGerado;
 
+        const tmpFile = path.join(__dirname, 'assets/tmp/pitmunews.txt');
+        try {
+            const tmpDir = path.dirname(tmpFile);
+            if (!fs.existsSync(tmpDir)) {
+                fs.mkdirSync(tmpDir, { recursive: true });
+            }
+            if (fs.existsSync(tmpFile)) {
+                fs.unlinkSync(tmpFile);
+            }
+            fs.writeFileSync(tmpFile, jornalCompleto, 'utf8');
+            console.log(`Jornal salvo em: ${tmpFile}`);
+        } catch (err) {
+            console.error("Erro ao salvar o jornal temporário:", err);
+        }
+
         const allChats = await client.getChats();
         const targetGroups = allChats.filter(c => c.isGroup && chatWithNewsletter.includes(c.name));
 
@@ -405,7 +420,7 @@ async function handleAutomaticNews(message, client) {
             for (const group of targetGroups) {
                 await client.sendMessage(group.id._serialized, jornalCompleto);
             }
-            const stickerPath = path.join(__dirname, '../Newsletter.webp');
+            const stickerPath = path.join(__dirname, 'assets/Newsletter.webp');
             if (fs.existsSync(stickerPath)) {
                 const stickerMedia = MessageMedia.fromFilePath(stickerPath);
                 for (const group of targetGroups) {

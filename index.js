@@ -6,6 +6,7 @@ const qrcode = require('qrcode-terminal');
 const { handleStickerCommands } = require('./handlers/stickerHandler');
 const { handleNewsCommands } = require('./handlers/newsHandler');
 const { handleBotCommands } = require('./handlers/botHandler');
+const { handleTermoCommands } = require('./handlers/termoHandler');
 
 const client = new Client({
     authStrategy: new LocalAuth(),
@@ -42,6 +43,7 @@ client.on('message', async (message) => {
     try {
         if (await handleStickerCommands(message, client)) return;
         if (await handleNewsCommands(message, client)) return;
+        if (await handleTermoCommands(message, client)) return;
         if (await handleBotCommands(message)) return;
     } catch (error) {
         console.error("Erro fatal no processamento da mensagem:", error);

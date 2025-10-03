@@ -9,8 +9,8 @@ const crypto = require('crypto');
 async function handleStickerCommands(message, client) {
     async function processMedia(media, from, originalMessage) {
         const id = crypto.randomBytes(4).toString('hex');
-        const tempDir = path.join(__dirname, 'tmp');
-        if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
+        const tempDir = path.join(__dirname, 'assets/tmp');
+        if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
 
         const tempInputPath = path.join(tempDir, `input_${id}`);
         const tempOutputPath = path.join(tempDir, `output_${id}.webp`);
