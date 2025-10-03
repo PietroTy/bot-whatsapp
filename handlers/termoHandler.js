@@ -5,8 +5,6 @@ const MAX_ATTEMPTS = 6;
 const MAX_ATTEMPTS_DUETO = 7;
 const MAX_ATTEMPTS_QUARTETO = 9;
 const MAX_ATTEMPTS_OCTETO = 13;
-const WORDS_PATH = 'assets/termoWords.txt';
-const VALID_PATH = 'assets/termoValid.txt';
 
 const EMOJI_CORRECT = '🟩';
 const EMOJI_PRESENT = '🟨';
@@ -14,12 +12,12 @@ const EMOJI_ABSENT = '⬛';
 
 const termoGames = {};
 
-const termoWords = fs.readFileSync(WORDS_PATH, 'utf-8')
+const termoWords = fs.readFileSync(__dirname + '/assets/termoWords.txt', 'utf-8')
     .split('\n')
     .map(w => w.trim().toLowerCase())
     .filter(w => w.length === 5);
 
-const validWords = fs.readFileSync(VALID_PATH, 'utf-8')
+const validWords = fs.readFileSync(__dirname + '/assets/termoValid.txt', 'utf-8')
     .split('\n')
     .map(w => w.trim().toLowerCase())
     .filter(w => w.length === 5);
