@@ -126,7 +126,12 @@ function termoDisplay(feedbacks, guesses, secrets, acertadas) {
     let lines = [];
     for (let i = 0; i < feedbacks.length; i++) {
         if (acertadas[i]) {
-            lines.push(secrets[i]);
+            const word = secrets[i].toLowerCase();
+            let line = '';
+            for (const letter of word) {
+                line += CORRECT_LETTERS[letter] || letter;
+            }
+            lines.push(line);
         } else {
             lines.push(feedbacks[i]);
         }
