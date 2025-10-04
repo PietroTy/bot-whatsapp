@@ -1567,3 +1567,12 @@ vulgo
 zebra
 zumbi
 zumba
+combo
+tetra
+arduo
+bolor
+roger
+vitor
+luigi
+vasco
+arpao

@@ -6,10 +6,6 @@ const MAX_ATTEMPTS_DUETO = 7;
 const MAX_ATTEMPTS_QUARTETO = 9;
 const MAX_ATTEMPTS_OCTETO = 13;
 
-const EMOJI_CORRECT = '🟩';
-const EMOJI_PRESENT = '🟨';
-const EMOJI_ABSENT = '⬛';
-
 const termoGames = {};
 
 const termoWords = fs.readFileSync(__dirname + '/assets/termoWords.txt', 'utf-8')
@@ -87,24 +83,36 @@ function startOcteto(chatId) {
     return secrets;
 }
 
+const CORRECT_LETTERS = {
+    a: '🅰', b: '🅱', c: '🅲', d: '🅳', e: '🅴', f: '🅵', g: '🅶', h: '🅷', i: '🅸', j: '🅹',
+    k: '🅺', l: '🅻', m: '🅼', n: '🅽', o: '🅾', p: '🅿', q: '🆀', r: '🆁', s: '🆂', t: '🆃',
+    u: '🆄', v: '🆅', w: '🆆', x: '🆇', y: '🆈', z: '🆉'
+};
+const PRESENT_LETTERS = {
+    a: '🄰', b: '🄱', c: '🄲', d: '🄳', e: '🄴', f: '🄵', g: '🄶', h: '🄷', i: '🄸', j: '🄹',
+    k: '🄺', l: '🄻', m: '🄼', n: '🄽', o: '🄾', p: '🄿', q: '🅀', r: '🅁', s: '🅂', t: '🅃',
+    u: '🅄', v: '🅅', w: '🅆', x: '🅇', y: '🅈', z: '🅉'
+};
+const ABSENT_LETTER = '☐';
+
 function termoFeedback(secret, guess) {
     const secretArr = secret.split('');
     const guessArr = guess.split('');
-    const feedback = Array(5).fill(EMOJI_ABSENT);
+    const feedback = Array(5).fill(ABSENT_LETTER);
     const secretUsed = Array(5).fill(false);
 
     for (let i = 0; i < 5; i++) {
         if (guessArr[i] === secretArr[i]) {
-            feedback[i] = EMOJI_CORRECT;
+            feedback[i] = CORRECT_LETTERS[guessArr[i]] || guessArr[i];
             secretUsed[i] = true;
         }
     }
 
     for (let i = 0; i < 5; i++) {
-        if (feedback[i] === EMOJI_CORRECT) continue;
+        if (feedback[i] !== ABSENT_LETTER) continue;
         for (let j = 0; j < 5; j++) {
             if (!secretUsed[j] && guessArr[i] === secretArr[j]) {
-                feedback[i] = EMOJI_PRESENT;
+                feedback[i] = PRESENT_LETTERS[guessArr[i]] || guessArr[i];
                 secretUsed[j] = true;
                 break;
             }
@@ -126,14 +134,27 @@ function termoDisplay(feedbacks, guesses, secrets, acertadas) {
     return lines.join('\n');
 }
 
+const removeAcentos = (str) => str
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
 async function handleTermoCommands(message, client) {
-    const text = message.body.trim().toLowerCase();
+    const textOriginal = message.body.trim();
+    const text = removeAcentos(textOriginal);
+
     const chat = await message.getChat();
     const chatId = chat.id._serialized;
 
-    // Bloqueia comandos no grupo zapbot#sticker
-    if (chat.isGroup && chat.name === "zapbot#sticker") {
-        await message.reply("Neste grupo, os comandos de jogos estão desativados. Use `#sticker` para criar stickers.");
+    const isStickerGroup = chat.isGroup && chat.name === "zapbot#sticker";
+    const termoCommands = ['#termo', '#dueto', '#quarteto', '#octeto', '#exit'];
+
+    if (isStickerGroup && !termoCommands.includes(text)) {
+        return false;
+    }
+
+    if (isStickerGroup) {
+        await message.reply("Neste grupo, os comandos de jogos estão desativados. Use #sticker para criar stickers.");
         return true;
     }
 
@@ -171,7 +192,7 @@ async function handleTermoCommands(message, client) {
         startOcteto(chatId);
         termoGames[chatId].acertadas = [false, false, false, false, false, false, false, false];
         await message.reply(
-            "🎮 *Octeto iniciado!* Tente adivinhar as 8 palavras de 5 letras. Boa sorte kkkkkkkk\n" +
+            "🎮 *Octeto iniciado!* Tente adivinhar as 8 palavras de 5 letras.\nBoa sorte mané kkkkkkkk\n" +
             `Você tem ${MAX_ATTEMPTS_OCTETO} tentativas!`
         );
         return true;
@@ -191,29 +212,32 @@ async function handleTermoCommands(message, client) {
     const game = termoGames[chatId];
     if (!game || game.finished) return false;
 
-    if (!/^[a-zçãõáéíóúâêô]{5}$/i.test(text)) return false;
-    if (!validWords.includes(text)) {
+    if (!/^[a-zçãõáéíóúâêô]{5}$/i.test(textOriginal)) return false;
+    const guess = removeAcentos(textOriginal);
+
+    if (!validWords.includes(guess)) {
         await message.reply("❌ Palavra inválida! Tente uma palavra de 5 letras que exista.");
         return true;
     }
 
-    game.attempts.push(text);
+    game.attempts.push(guess);
 
     const feedbacks = [];
     let allAcertadas = true;
-    for (let i = 0; i < game.secret.length; i++) {
+    const secretsArr = Array.isArray(game.secret) ? game.secret : [game.secret];
+    for (let i = 0; i < secretsArr.length; i++) {
         if (game.acertadas[i]) {
-            feedbacks.push(game.secret[i]);
-        } else if (text === game.secret[i]) {
+            feedbacks.push(secretsArr[i]);
+        } else if (guess === removeAcentos(secretsArr[i])) {
             game.acertadas[i] = true;
-            feedbacks.push(game.secret[i]);
+            feedbacks.push(secretsArr[i]);
         } else {
-            feedbacks.push(termoFeedback(game.secret[i], text));
+            feedbacks.push(termoFeedback(secretsArr[i], guess));
             allAcertadas = false;
         }
     }
 
-    const display = termoDisplay(feedbacks, Array(game.secret.length).fill(text), game.secret, game.acertadas);
+    const display = termoDisplay(feedbacks, Array(secretsArr.length).fill(guess), secretsArr, game.acertadas);
 
     let tentativasMax = MAX_ATTEMPTS;
     if (game.dueto) tentativasMax = MAX_ATTEMPTS_DUETO;
