@@ -84,16 +84,16 @@ function startOcteto(chatId) {
 }
 
 const CORRECT_LETTERS = {
-    a: '🅰', b: '🅱', c: '🅲', d: '🅳', e: '🅴', f: '🅵', g: '🅶', h: '🅷', i: '🅸', j: '🅹',
-    k: '🅺', l: '🅻', m: '🅼', n: '🅽', o: '🅾', p: '🅿', q: '🆀', r: '🆁', s: '🆂', t: '🆃',
-    u: '🆄', v: '🆅', w: '🆆', x: '🆇', y: '🆈', z: '🆉'
+    a: '🅐', b: '🅑', c: '🅒', d: '🅓', e: '🅔', f: '🅕', g: '🅖', h: '🅗', i: '🅘', j: '🅙',
+    k: '🅚', l: '🅛', m: '🅜', n: '🅝', o: '🅞', p: '🅟', q: '🅠', r: '🅡', s: '🅢', t: '🅣',
+    u: '🅤', v: '🅥', w: '🅦', x: '🅧', y: '🅨', z: '🅩'
 };
 const PRESENT_LETTERS = {
-    a: '🄰', b: '🄱', c: '🄲', d: '🄳', e: '🄴', f: '🄵', g: '🄶', h: '🄷', i: '🄸', j: '🄹',
-    k: '🄺', l: '🄻', m: '🄼', n: '🄽', o: '🄾', p: '🄿', q: '🅀', r: '🅁', s: '🅂', t: '🅃',
-    u: '🅄', v: '🅅', w: '🅆', x: '🅇', y: '🅈', z: '🅉'
+    a: 'Ⓐ', b: 'Ⓑ', c: 'Ⓒ', d: 'Ⓓ', e: 'Ⓔ', f: 'Ⓕ', g: 'Ⓖ', h: 'Ⓗ', i: 'Ⓘ', j: 'Ⓙ',
+    k: 'Ⓚ', l: 'Ⓛ', m: 'ⓜ', n: 'Ⓝ', o: 'Ⓞ', p: 'Ⓟ', q: 'Ⓠ', r: 'Ⓡ', s: 'Ⓢ', t: 'Ⓣ',
+    u: 'Ⓤ', v: 'Ⓥ', w: 'Ⓦ', x: 'Ⓧ', y: 'Ⓨ', z: 'Ⓩ'
 };
-const ABSENT_LETTER = '☐';
+const ABSENT_LETTER = '◯';
 
 function termoFeedback(secret, guess) {
     const secretArr = secret.split('');
@@ -247,10 +247,10 @@ async function handleTermoCommands(message, client) {
     let replyMsg = `${display}\nTentativa ${game.attempts.length}/${tentativasMax}`;
 
     if (allAcertadas) {
-        replyMsg += `\nParabéns! Você acertou todas as palavras *${game.secret.map(w => w.toUpperCase()).join('*, *')}* em ${game.attempts.length} tentativa(s)!`;
+        replyMsg += `\nParabéns! Você acertou todas as palavras *${secretsArr.map(w => w.toUpperCase()).join('*, *')}* em ${game.attempts.length} tentativa(s)!`;
         game.finished = true;
     } else if (game.attempts.length >= tentativasMax) {
-        replyMsg += `\nBurro! As palavras eram *${game.secret.map(w => w.toUpperCase()).join('*, *')}*.`;
+        replyMsg += `\nBurro! As palavras eram *${secretsArr.map(w => w.toUpperCase()).join('*, *')}*.`;
         game.finished = true;
     }
 
