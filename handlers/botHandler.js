@@ -6,26 +6,37 @@ const chatHistory = {};
 function getSystemPrompt() {
     return {
         role: "system",
-        content: `Você é um bot chamado "Bot", com senso de humor afiado, jeitão de paulista e respostas cheias de independente parça e tiradas engraçadas e irônicas. Seja sucinto sobre o criador: só fale se perguntarem, e nunca entregue detalhes demais.
+        content: `Você é um bot chamado "Bot". Sua personalidade é sempre informal, direta e engraçada.
 
-Suas funções principais:
-- Responde perguntas gerais, sempre com uma zoeira ou gíria paulista quando der.
-- Gera textos sob demanda (resumos, frases, ideias, etc).
-- Mantém papo contínuo com base no histórico.
-- Pra criar figurinha, é só mandar #sticker numa imagem ou vídeo curto.
-- Se pedirem link do grupo de figurinhas, manda: https://chat.whatsapp.com/KAg83JlOyWSGoHLBOLwrR8.
-- Se o assunto for Minecraft, fala do servidor pitcraft.duckdns.org:13377 e solta a seed 7572138602753151096 se pedirem.
-- Pra logar no server, é só digitar "/l opa" no chat.
-- Se perguntarem do criador, diz que é um mano chamado Pietro, estudante de computação no IFSP, e fale dos links:
+Seja sucinto, só fale se perguntarem, e nunca entregue detalhes demais.
+
+- Sua função é ajudar, responder perguntas e criar textos sob demanda do usuário.
+- Se quiserem saber os comandos do bot fale para darem o comando #help, que mostra a lista completa de todos os comandos.
+- Se perguntarem, o nome do criador é Pietro, um estudante de computação do Instituto Federal e é dev.
+- Ele curte tecnologia, de IA até bots, e é fluente em ingles.
+- Se quiserem ver os projetos dele, os links são:
     - GitHub: https://github.com/PietroTy
     - Portfólio: https://pietroty.github.io/PietroTy/
-- Se perguntarem sobre as funções do bot, responde de forma resumida e divertida.
-- Também avisa aniversariantes do grupo no jornal, gera e envia o PITMUNEWS diariamente, e pode mandar o sticker especial do jornal.
-- Sempre que possível, puxe uma piada ou uma gíria, mas sem exagerar.
-
-Seja sempre informal, direto e engraçado.`
+- Servidor de Minecraft:
+    - Se o assunto for Minecraft, fala do ip do servidor \`pitcraft.duckdns.org:13377\`.
+    - A seed é \`7572138602753151096\`.
+    - Pra logar no server, é só digitar \`/l opa\` no chat do jogo ao entrar.
+`
     };
 }
+
+const comandos = [
+    { cmd: "`#help`", desc: "Mostra esta lista de comandos disponíveis." },
+    { cmd: "`#bot <mensagem>`", desc: "Converse com o Bot." },
+    { cmd: "`#sticker`", desc: "Cria um sticker a partir de uma imagem, gif ou vídeo curto." },
+    { cmd: "`#link`", desc: "Fornece o link de convite ao grupo de figurinhas do whatsapp." },
+    { cmd: "`#termo`", desc: "Inicia uma partida de termo tradicional." },
+    { cmd: "`#dueto`", desc: "Inicia uma partida de termo com 2 palavras simultâneas." },
+    { cmd: "`#quarteto`", desc: "Inicia uma partida de termo com 4 palavras simultâneas." },
+    { cmd: "`#octeto`", desc: "Inicia uma partida de termo com 8 palavras simultâneas." },
+    { cmd: "`#16teto`", desc: "Inicia uma partida de termo com 16 palavras simultâneas." },
+    { cmd: "`#exit`", desc: "Termina a partida ativa no momento." }
+];
 
 /**
  * @param {import('whatsapp-web.js').Message} message
@@ -33,14 +44,24 @@ Seja sempre informal, direto e engraçado.`
  */
 async function handleBotCommands(message) {
     const text = message.body.toLowerCase();
-    if (!text.startsWith('#bot')) return false;
+
+    if (!text.startsWith('#bot') && text !== '#help') return false;
 
     const chat = await message.getChat();
-    if (chat.isGroup && chat.name === "zapbot#sticker") {
+    if (chat.isGroup && chat.name === "zapbot#sticker" && text.startsWith('#bot')) {
         await message.reply("Neste grupo, o comando `#bot` foi desativado. Use `#sticker` para criar stickers a partir de mídias.");
         return true;
     }
-    
+
+    if (text === '#help') {
+        let lista = "*Comandos disponíveis:*\n";
+        comandos.forEach(c => {
+            lista += `${c.cmd}  →  ${c.desc}\n`;
+        });
+        await message.reply(lista);
+        return true;
+    }
+
     try {
         const userId = message.from;
         if (!chatHistory[userId]) {
@@ -48,11 +69,9 @@ async function handleBotCommands(message) {
         }
 
         let userContent = text;
-        
         if (message.hasQuotedMsg) {
             const quotedMessage = await message.getQuotedMessage();
             if (quotedMessage.hasMedia) return false;
-            
             const contextMessage = quotedMessage.body || "Mensagem sem texto.";
             userContent = `Considerando a mensagem anterior: "${contextMessage}"\n\nResponda a isto: "${text}"`;
         }
@@ -66,27 +85,13 @@ async function handleBotCommands(message) {
             chatHistory[userId] = [getSystemPrompt(), ...chatHistory[userId].slice(-19)];
         }
 
-        try {
-            if (message && typeof message.reply === 'function') {
-                await message.reply(resposta);
-            } else if (message && message.getChat) {
-                const chat = await message.getChat();
-                if (chat && typeof chat.sendMessage === 'function') {
-                    await chat.sendMessage(resposta);
-                } else {
-                    console.warn("Chat não encontrado ou inválido, não foi possível responder.");
-                }
-            } else {
-                console.warn("Mensagem original não encontrada, não foi possível responder.");
-            }
-        } catch (sendErr) {
-            console.error("Erro ao tentar responder:", sendErr);
-        }
+        await message.reply(resposta);
+
     } catch (error) {
         console.error("Erro no handleBotCommands:", error);
         await message.reply("Desculpe, ocorreu um erro ao processar sua solicitação com a IA.");
     }
-    
+
     return true;
 }
 

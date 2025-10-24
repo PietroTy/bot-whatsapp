@@ -72,7 +72,7 @@ async function handleStickerCommands(message, client) {
             });
         } catch (err) {
             console.error('Erro ao criar figurinha:', err.message || err);
-            await originalMessage.reply("Falha ao transformar a mídia em figurinha, ela deve ter no `máximo 6 segundos`.");
+            await originalMessage.reply("Falha ao transformar a mídia em figurinha, ela deve ter no `máximo 4 segundos`.");
         } finally {
             try {
                 let inputExt;

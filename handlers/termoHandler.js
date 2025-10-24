@@ -5,6 +5,7 @@ const MAX_ATTEMPTS = 6;
 const MAX_ATTEMPTS_DUETO = 7;
 const MAX_ATTEMPTS_QUARTETO = 9;
 const MAX_ATTEMPTS_OCTETO = 13;
+const MAX_ATTEMPTS_16TETO = 21;
 
 const termoGames = {};
 
@@ -26,7 +27,8 @@ function startTermo(chatId) {
         finished: false,
         dueto: false,
         quarteto: false,
-        octeto: false
+        octeto: false,
+        desesseisteto:false
     };
     return secret;
 }
@@ -44,7 +46,8 @@ function startDueto(chatId) {
         finished: false,
         dueto: true,
         quarteto: false,
-        octeto: false
+        octeto: false,
+        desesseisteto:false
     };
     return [secret1, secret2];
 }
@@ -61,7 +64,8 @@ function startQuarteto(chatId) {
         finished: false,
         dueto: false,
         quarteto: true,
-        octeto: false
+        octeto: false,
+        desesseisteto:false
     };
     return secrets;
 }
@@ -78,7 +82,26 @@ function startOcteto(chatId) {
         finished: false,
         dueto: false,
         quarteto: false,
-        octeto: true
+        octeto: true,
+        desesseisteto:false
+    };
+    return secrets;
+}
+
+function start16teto(chatId) {
+    let secrets = [];
+    while (secrets.length < 16) {
+        const candidate = termoWords[Math.floor(Math.random() * termoWords.length)];
+        if (!secrets.includes(candidate)) secrets.push(candidate);
+    }
+    termoGames[chatId] = {
+        secret: secrets,
+        attempts: [],
+        finished: false,
+        dueto: false,
+        quarteto: false,
+        octeto: false,
+        desesseisteto: true
     };
     return secrets;
 }
@@ -152,14 +175,14 @@ async function handleTermoCommands(message, client) {
     const chatId = chat.id._serialized;
 
     const isStickerGroup = chat.isGroup && chat.name === "zapbot#sticker";
-    const termoCommands = ['#termo', '#dueto', '#quarteto', '#octeto', '#exit'];
+    const termoCommands = ['#termo', '#dueto', '#quarteto', '#octeto', "#16teto", '#exit'];
 
     if (isStickerGroup && !termoCommands.includes(text)) {
         return false;
     }
 
     if (isStickerGroup) {
-        await message.reply("Neste grupo, os comandos de jogos estão desativados. Use #sticker para criar stickers.");
+        await message.reply("Neste grupo, os comandos de jogos estão desativados. Use `#sticker` para criar figurinhas.");
         return true;
     }
 
@@ -203,12 +226,31 @@ async function handleTermoCommands(message, client) {
         return true;
     }
 
+    if (text === '#16teto') {
+        start16teto(chatId);
+        termoGames[chatId].acertadas = [false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false];
+        await message.reply(
+            "🎮 *16teto iniciado!* Tente adivinhar as 16 palavras de 5 letras.\nDeus te ajude.\n" +
+            `Você tem ${MAX_ATTEMPTS_16TETO} tentativas!`
+        );
+        return true;
+    }
+
     if (text === '#exit') {
         const game = termoGames[chatId];
         if (game && !game.finished) {
             game.finished = true;
+            const secretsArr = Array.isArray(game.secret) ? game.secret : [game.secret];
+            const finalWords = secretsArr.map(word => {
+                let line = '';
+                for (const letter of word.toLowerCase()) {
+                    line += CORRECT_LETTERS[letter] || letter;
+                }
+                return line;
+            }).join('\n');
+
             await message.reply(
-                `Jogo encerrado!\nAs palavras eram: *${Array.isArray(game.secret) ? game.secret.map(w => w.toUpperCase()).join('*, *') : game.secret.toUpperCase()}*`
+                `Jogo encerrado!\nAs palavras eram:\n${finalWords}`
             );
         }
         return true;
@@ -248,14 +290,23 @@ async function handleTermoCommands(message, client) {
     if (game.dueto) tentativasMax = MAX_ATTEMPTS_DUETO;
     if (game.quarteto) tentativasMax = MAX_ATTEMPTS_QUARTETO;
     if (game.octeto) tentativasMax = MAX_ATTEMPTS_OCTETO;
+    if (game.desesseisteto) tentativasMax = MAX_ATTEMPTS_16TETO;
 
     let replyMsg = `${display}\nTentativa ${game.attempts.length}/${tentativasMax}`;
 
+    const finalWords = secretsArr.map(word => {
+        let line = '';
+        for (const letter of word.toLowerCase()) {
+            line += CORRECT_LETTERS[letter] || letter;
+        }
+        return line;
+    }).join('\n');
+
     if (allAcertadas) {
-        replyMsg += `\nParabéns! Você acertou todas as palavras *${secretsArr.map(w => w.toUpperCase()).join('*, *')}* em ${game.attempts.length} tentativa(s)!`;
+        replyMsg += `\n🎉 Parabéns! Você acertou todas as palavras em ${game.attempts.length} tentativa(s):\n${finalWords}`;
         game.finished = true;
     } else if (game.attempts.length >= tentativasMax) {
-        replyMsg += `\nBurro! As palavras eram *${secretsArr.map(w => w.toUpperCase()).join('*, *')}*.`;
+        replyMsg += `\n🫏 Burro! As palavras eram:\n${finalWords}`;
         game.finished = true;
     }
 
