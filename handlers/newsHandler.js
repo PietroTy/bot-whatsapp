@@ -294,10 +294,10 @@ ${textoNoticias3}
 }
 
 async function fetchLatestYoutubeVideo(channelId, apiKey) {
-    const url = `https://www.googleapis.com/youtube/v3/search?key=${apiKey}&channelId=${channelId}&order=date&part=snippet&type=video&maxResults=1`;
+    const url = `https://www.googleapis.com/youtube/v3/search?key=${apiKey}&channelId=${channelId}&order=date&part=snippet&type=video&maxResults=2`;
     try {
         const response = await axios.get(url);
-        const video = response.data.items[0];
+        const video = response.data.items[1];
         if (!video) return null;
         return `https://www.youtube.com/watch?v=${video.id.videoId}`;
     } catch (error) {
