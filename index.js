@@ -11,8 +11,23 @@ const { handleTermoCommands } = require('./handlers/termoHandler');
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        executablePath: '/usr/bin/chromium',
+        headless: false,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-gpu',
+            '--disable-dev-shm-usage',
+            '--disable-software-rasterizer',
+            '--disable-extensions',
+            '--disable-infobars',
+            '--disable-blink-features=AutomationControlled',
+            '--remote-debugging-port=9222',
+            '--window-size=800,600'
+        ],
+    },
+    webVersionCache: {
+        type: "none"
     }
 });
 
