@@ -2,16 +2,30 @@
 require('dotenv').config();
 const OpenAI = require("openai");
 
-const client = new OpenAI({
-    apiKey: process.env.MARITACA_API_KEY,
-    baseURL: "https://chat.maritaca.ai/api"
-});
+const API_KEY = process.env.MARITACA_API_KEY;
+
+let client = null;
+let iaEnabled = false;
+
+if (API_KEY) {
+    client = new OpenAI({
+        apiKey: API_KEY,
+        baseURL: "https://chat.maritaca.ai/api"
+    });
+    iaEnabled = true;
+} else {
+    console.warn("Aviso: MARITACA_API_KEY não definida. Funcionalidades de IA ficarão desativadas.");
+}
 
 /**
  * @param {Array<Object>} messages
  * @returns {Promise<string>}
  */
 async function perguntarIA(messages) {
+    if (!iaEnabled) {
+        return "O serviço de IA não está configurado neste servidor.";
+    }
+
     try {
         const response = await client.chat.completions.create({
             model: "sabiazim-3",
