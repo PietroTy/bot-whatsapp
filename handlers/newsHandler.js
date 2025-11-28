@@ -440,10 +440,27 @@ async function handleAutomaticNews(message, client) {
 }
 
 async function handleNewsCommands(message, client) {
-    const contact = await message.getContact();
-    if (contact.name === "Newsletter") {
-        await handleAutomaticNews(message, client);
-        return true;
+    try {
+        const chat = await message.getChat();
+        
+        if (message.author) {
+            try {
+                const author = await message.getContact();
+                if (author && (author.name === "Newsletter" || author.pushname === "Newsletter")) {
+                    await handleAutomaticNews(message, client);
+                    return true;
+                }
+            } catch (contactError) {
+                return false;
+            }
+        } else {
+            if (chat.name === "Newsletter" || message.from.includes("Newsletter")) {
+                await handleAutomaticNews(message, client);
+                return true;
+            }
+        }
+    } catch (error) {
+        return false;
     }
     return false;
 }
