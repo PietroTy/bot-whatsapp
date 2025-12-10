@@ -5,41 +5,12 @@ const path = require('path');
 const { MessageMedia } = require('whatsapp-web.js');
 const { perguntarIA } = require('../services/aiService');
 
-const chatWithNewsletter = ["T . D . A . P .", "Laranja Cremosa", "Jor & Now"];
-const COUNTER_FILE = path.join(__dirname, 'assets/pitmunews_counter.json');
+const CONFIG = JSON.parse(fs.readFileSync(path.join(__dirname, '../config/config.json'), 'utf8'));
 
-const ANIVERSARIANTES_ESPECIAIS = [
-    { nome: 'Luiz', data: '27/01' },
-    { nome: 'Pedrin', data: '08/02' },
-    { nome: 'Liz', data: '09/02' },
-    { nome: 'Laila', data: '17/02' },
-    { nome: 'Dani', data: '03/03' },
-    { nome: 'Roger', data: '07/03' },
-    { nome: 'Xivana', data: '21/03' },
-    { nome: 'Mel', data: '13/04' },
-    { nome: 'Lidi', data: '21/05' },
-    { nome: 'Evelyn', data: '08/06' },
-    { nome: 'Nic', data: '08/06' },
-    { nome: 'Felipinho', data: '09/06' },
-    { nome: 'Xumas', data: '19/06' },
-    { nome: 'Mary', data: '21/06' },
-    { nome: 'Raissa', data: '26/06' },
-    { nome: 'Gregorio', data: '05/07' },
-    { nome: 'Bia', data: '13/07' },
-    { nome: 'Arroz', data: '12/08' },
-    { nome: 'Pietro', data: '01/09' },
-    { nome: 'Vito', data: '01/09' },
-    { nome: 'Kevin', data: '22/09' },
-    { nome: 'Layzer', data: '04/11' },
-    { nome: 'Rebs', data: '24/11' },
-    { nome: 'Casari', data: '17/12' },
-    { nome: 'Heitor', data: '17/12' },
-    { nome: 'Fernando', data: '16/12' },
-    { nome: 'SrQuirino', data: '19/12' },
-    { nome: 'Tirado', data: '26/12' },
-    { nome: 'Marcola', data: '28/12' },
-    { nome: 'Rogréio', data: '29/12' }
-];
+const NEWSLETTER_AUTHOR_ID = CONFIG.newsletter.authorId;
+const chatWithNewsletter = CONFIG.newsletter.chatGroups;
+const ANIVERSARIANTES_ESPECIAIS = CONFIG.aniversariantes;
+const COUNTER_FILE = path.join(__dirname, 'assets/pitmunews_counter.json');
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -345,7 +316,7 @@ async function handleAutomaticNews(message, client) {
 
         const partes = splitViniMunews(textoCompletoDoEditor);
         if (!partes) {
-            await message.reply("Falha ao processar: a estrutura do VINIMUNEWS não pôde ser reconhecida. Verifique os marcadores de seção.");
+            console.error("Falha ao processar: a estrutura do VINIMUNEWS não pôde ser reconhecida. Verifique os marcadores de seção.");
             return;
         }
         console.log("Jornal dividido em 4 partes com sucesso.");
@@ -372,7 +343,7 @@ async function handleAutomaticNews(message, client) {
 
         const systemMessage = { role: "system", content: "Você é um assistente de redação de jornal automatizado, focado em seguir instruções precisamente para criar seções de um jornal." };
         
-        const DELAY_ENTRE_PARTES = 10000;
+        const DELAY_ENTRE_PARTES = CONFIG.ia.delayEntreParcelas;
 
         const resultadoParte1 = await processarParteIA([systemMessage, { role: "user", content: prompt1 }], 0);
         await delay(DELAY_ENTRE_PARTES);
@@ -435,7 +406,6 @@ async function handleAutomaticNews(message, client) {
     } catch (error) {
         console.error("Erro no fluxo principal de handleAutomaticNews:", error);
         const errorMessage = error.response?.data?.error?.message || error.message;
-        await message.reply(`Ocorreu um erro crítico ao gerar ou enviar o jornal. Detalhe: ${errorMessage}`);
     }
 }
 
@@ -443,24 +413,15 @@ async function handleNewsCommands(message, client) {
     try {
         const chat = await message.getChat();
         
-        if (message.author) {
-            try {
-                const author = await message.getContact();
-                if (author && (author.name === "Newsletter" || author.pushname === "Newsletter")) {
-                    await handleAutomaticNews(message, client);
-                    return true;
-                }
-            } catch (contactError) {
-                return false;
-            }
-        } else {
-            if (chat.name === "Newsletter" || message.from.includes("Newsletter")) {
-                await handleAutomaticNews(message, client);
-                return true;
-            }
+        const isNewsletter = message.author === NEWSLETTER_AUTHOR_ID;
+        
+        if (isNewsletter) {
+            console.log("[Newsletter] Detectado por author ID");
+            await handleAutomaticNews(message, client);
+            return true;
         }
     } catch (error) {
-        return false;
+        console.error("[Newsletter] Erro:", error.message);
     }
     return false;
 }
