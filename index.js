@@ -11,24 +11,12 @@ const { handleTermoCommands } = require('./handlers/termoHandler');
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
-        executablePath: '/usr/bin/chromium',
-        headless: true,
+
+        headless: 'new',
         args: [
             '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-features=site-per-process',
-            '--disable-web-security',
-            '--disable-extensions',
-            '--disable-gpu',
-            '--single-process',
-            '--no-zygote'
-        ],
-    },
-    webVersion: '2.2412.54',
-    webVersionCache: {
-        type: 'remote',
-        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
+            '--disable-setuid-sandbox'
+        ]
     }
 });
 
