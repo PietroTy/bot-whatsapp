@@ -1,0 +1,81 @@
+// index.js
+require('dotenv').config();
+const { Client, LocalAuth } = require('whatsapp-web.js');
+const qrcode = require('qrcode-terminal');
+
+const { handleStickerCommands } = require('./handlers/stickerHandler');
+const { handleNewsCommands } = require('./handlers/newsHandler');
+const { handleBotCommands } = require('./handlers/botHandler');
+const { handleTermoCommands } = require('./handlers/termoHandler');
+
+const client = new Client({
+    authStrategy: new LocalAuth(),
+    puppeteer: {
+        executablePath: '/usr/bin/chromium',
+        headless: true,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-features=site-per-process',
+            '--disable-web-security',
+            '--disable-extensions',
+            '--disable-gpu',
+            '--single-process',
+            '--no-zygote'
+        ],
+    },
+    webVersion: '2.2412.54',
+    webVersionCache: {
+        type: 'remote',
+        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
+    }
+});
+
+client.on('qr', (qr) => {
+    console.log('Escaneie o QR Code abaixo:');
+    qrcode.generate(qr, { small: true });
+});
+
+client.on('ready', () => console.log('Bot está ON e pronto!'));
+client.on('authenticated', () => console.log('Bot autenticado!'));
+
+client.on('auth_failure', (msg) => {
+    console.error('Falha na autenticação:', msg);
+});
+
+client.on('change_state', (state) => {
+    console.log('Estado do bot mudou para:', state);
+});
+
+client.on('disconnected', (reason) => {
+    console.log('Bot desconectado:', reason);
+    console.log('Tentando reconectar...');
+});
+
+client.on('message', async (message) => {
+    if (!message.body || message.body.length < 2) return;
+    try {
+        if (await handleStickerCommands(message, client)) return;
+        if (await handleNewsCommands(message, client)) return;
+        if (await handleTermoCommands(message, client)) return;
+        if (await handleBotCommands(message)) return;
+    } catch (error) {
+        console.error("Erro fatal no processamento da mensagem:", error);
+    }
+});
+
+setInterval(async () => {
+    try {
+        const state = await client.getState();
+        if (!state) throw new Error("Sem estado");
+    } catch (err) {
+        console.log("Cliente caiu — reiniciando sessão...");
+        try {
+            await client.destroy();
+        } catch {}
+        client.initialize();
+    }
+}, 60 * 1000);
+
+client.initialize();
