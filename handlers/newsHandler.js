@@ -12,6 +12,7 @@ const chatWithNewsletter = CONFIG.newsletter.chatGroups;
 const ANIVERSARIANTES_ESPECIAIS = CONFIG.aniversariantes;
 const COUNTER_FILE = path.join(__dirname, 'assets/pitmunews_counter.json');
 
+
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 function getEditionNumber() {
@@ -383,8 +384,64 @@ async function handleAutomaticNews(message, client) {
             console.error("Erro ao salvar o jornal temporário:", err);
         }
 
-        const allChats = await client.getChats();
-        const targetGroups = allChats.filter(c => c.isGroup && chatWithNewsletter.includes(c.name));
+        async function getChatsWithRetry(clientObj, maxAttempts = 3) {
+            let attempts = 0;
+            while (attempts < maxAttempts) {
+                try {
+                    const chats = await clientObj.getChats();
+                    if (!chats || chats.length === 0) {
+                        throw new Error('returned no chats');
+                    }
+                    return chats;
+                } catch (err) {
+                    attempts++;
+                    console.error(`Falha ao obter chats (tentativa ${attempts}/${maxAttempts}):`, err);
+                    if (err && err.stack) console.error(err.stack);
+
+                    if (attempts < maxAttempts) {
+
+                        await delay(5000);
+                        try {
+                            if (clientObj.pupPage && typeof clientObj.pupPage.reload === 'function') {
+                                await clientObj.pupPage.reload({ waitUntil: 'networkidle2' });
+                            }
+                        } catch (reloadErr) {
+                            console.warn('Falha ao recarregar a página do Puppeteer:', reloadErr.message);
+                        }
+                    } else {
+                        throw err;
+                    }
+                }
+            }
+        }
+
+        let allChats = [];
+        try {
+            allChats = await getChatsWithRetry(client);
+
+            console.log('================ Chats recebidos ================');
+            allChats.forEach(c => {
+                const name = c.name || '<sem nome>';
+                const id = c.id?._serialized || '<sem id>';
+                console.log(`- ${name} (${id})`);
+            });
+            console.log('================================================');
+        } catch (err) {
+            console.error("Erro irrecuperável ao recuperar chats, enviarei apenas à mensagem original:", err);
+        }
+
+        allChats = Array.isArray(allChats) ? allChats : [];
+
+        const targetGroups = allChats.filter(c => {
+            if (!c.isGroup) return false;
+            const id = c.id?._serialized;
+            const name = c.name;
+            const matchById = id && chatWithNewsletter.includes(id);
+            const matchByName = name && chatWithNewsletter.includes(name);
+            if (matchById) console.log(`grupo corresponde por ID: ${id}`);
+            if (matchByName) console.log(`grupo corresponde por nome: ${name}`);
+            return matchById || matchByName;
+        });
 
         if (targetGroups.length > 0) {
             console.log(`Enviando PITMUNEWS Nº ${editionNumber} para ${targetGroups.length} grupo(s).`);
@@ -401,11 +458,15 @@ async function handleAutomaticNews(message, client) {
             console.log("Envio concluído com sucesso.");
         } else {
             console.warn("Jornal gerado, mas nenhum grupo de destino foi encontrado.");
+
             await message.reply(jornalCompleto);
         }
     } catch (error) {
         console.error("Erro no fluxo principal de handleAutomaticNews:", error);
         const errorMessage = error.response?.data?.error?.message || error.message;
+        if (errorMessage && errorMessage !== error.toString()) {
+            console.error("Mensagem de erro detalhada:", errorMessage);
+        }
     }
 }
 

@@ -1,13 +1,16 @@
 {
   "newsletter": {
     "authorId": "231790962819089@lid",
-    "chatGroups": ["T . D . A . P .", "Laranja Cremosa", "Jor & Now"]
+    "chatGroups": [
+      "120363253948555200@g.us",
+      "120363420869794377@g.us",
+      "5511998810475-1495042770@g.us"
+    ]
   },
   "aniversariantes": [
     { "nome": "Luiz", "data": "27/01" },
     { "nome": "Pedrin", "data": "08/02" },
     { "nome": "Liz", "data": "09/02" },
-    { "nome": "Laila", "data": "17/02" },
     { "nome": "Dani", "data": "03/03" },
     { "nome": "Roger", "data": "07/03" },
     { "nome": "Xivana", "data": "21/03" },
