@@ -459,7 +459,7 @@ async function handleAutomaticNews(message, client) {
         } else {
             console.warn("Jornal gerado, mas nenhum grupo de destino foi encontrado.");
 
-            await message.reply(jornalCompleto);
+            await chat.sendMessage(jornalCompleto, { quotedMessageId: message.id._serialized });
         }
     } catch (error) {
         console.error("Erro no fluxo principal de handleAutomaticNews:", error);

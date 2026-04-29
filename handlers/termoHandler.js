@@ -182,16 +182,17 @@ async function handleTermoCommands(message, client) {
     }
 
     if (isStickerGroup) {
-        await message.reply("Neste grupo, os comandos de jogos estão desativados. Use `#sticker` para criar figurinhas.");
+        await chat.sendMessage("Neste grupo, os comandos de jogos estão desativados. Use `#sticker` para criar figurinhas.", { quotedMessageId: message.id._serialized });
         return true;
     }
 
     if (text === '#termo') {
         startTermo(chatId);
         termoGames[chatId].acertadas = [false];
-        await message.reply(
+        await chat.sendMessage(
             "🎮 *Termo iniciado!* Tente adivinhar a palavra de 5 letras.\n" +
-            `Você tem ${MAX_ATTEMPTS} tentativas!`
+            `Você tem ${MAX_ATTEMPTS} tentativas!`,
+            { quotedMessageId: message.id._serialized }
         );
         return true;
     }
@@ -199,9 +200,10 @@ async function handleTermoCommands(message, client) {
     if (text === '#dueto') {
         startDueto(chatId);
         termoGames[chatId].acertadas = [false, false];
-        await message.reply(
+        await chat.sendMessage(
             "🎮 *Dueto iniciado!* Tente adivinhar as 2 palavra de 5 letras.\n" +
-            `Você tem ${MAX_ATTEMPTS_DUETO} tentativas!`
+            `Você tem ${MAX_ATTEMPTS_DUETO} tentativas!`,
+            { quotedMessageId: message.id._serialized }
         );
         return true;
     }
@@ -209,9 +211,10 @@ async function handleTermoCommands(message, client) {
     if (text === '#quarteto') {
         startQuarteto(chatId);
         termoGames[chatId].acertadas = [false, false, false, false];
-        await message.reply(
+        await chat.sendMessage(
             "🎮 *Quarteto iniciado!* Tente adivinhar as 4 palavra de 5 letras.\n" +
-            `Você tem ${MAX_ATTEMPTS_QUARTETO} tentativas!`
+            `Você tem ${MAX_ATTEMPTS_QUARTETO} tentativas!`,
+            { quotedMessageId: message.id._serialized }
         );
         return true;
     }
@@ -219,9 +222,10 @@ async function handleTermoCommands(message, client) {
     if (text === '#octeto') {
         startOcteto(chatId);
         termoGames[chatId].acertadas = [false, false, false, false, false, false, false, false];
-        await message.reply(
+        await chat.sendMessage(
             "🎮 *Octeto iniciado!* Tente adivinhar as 8 palavras de 5 letras.\nBoa sorte mané kkkkkkkk\n" +
-            `Você tem ${MAX_ATTEMPTS_OCTETO} tentativas!`
+            `Você tem ${MAX_ATTEMPTS_OCTETO} tentativas!`,
+            { quotedMessageId: message.id._serialized }
         );
         return true;
     }
@@ -229,9 +233,10 @@ async function handleTermoCommands(message, client) {
     if (text === '#16teto') {
         start16teto(chatId);
         termoGames[chatId].acertadas = [false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false];
-        await message.reply(
+        await chat.sendMessage(
             "🎮 *16teto iniciado!* Tente adivinhar as 16 palavras de 5 letras.\nDeus te ajude.\n" +
-            `Você tem ${MAX_ATTEMPTS_16TETO} tentativas!`
+            `Você tem ${MAX_ATTEMPTS_16TETO} tentativas!`,
+            { quotedMessageId: message.id._serialized }
         );
         return true;
     }
@@ -249,8 +254,9 @@ async function handleTermoCommands(message, client) {
                 return line;
             }).join('\n');
 
-            await message.reply(
-                `Jogo encerrado!\nAs palavras eram:\n${finalWords}`
+            await chat.sendMessage(
+                `Jogo encerrado!\nAs palavras eram:\n${finalWords}`,
+                { quotedMessageId: message.id._serialized }
             );
         }
         return true;
@@ -263,7 +269,7 @@ async function handleTermoCommands(message, client) {
     const guess = removeAcentos(textOriginal);
 
     if (!validWords.includes(guess)) {
-        await message.reply("❌ Palavra inválida! Tente uma palavra de 5 letras que exista.");
+        await chat.sendMessage("❌ Palavra inválida! Tente uma palavra de 5 letras que exista.", { quotedMessageId: message.id._serialized });
         return true;
     }
 
@@ -310,7 +316,7 @@ async function handleTermoCommands(message, client) {
         game.finished = true;
     }
 
-    await message.reply(replyMsg);
+    await chat.sendMessage(replyMsg, { quotedMessageId: message.id._serialized });
     return true;
 }
 

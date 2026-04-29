@@ -25,7 +25,7 @@ async function handleStickerCommands(message, client) {
 
         try {
             if (!media) {
-                await originalMessage.reply("Erro ao baixar a mídia.");
+                await chat.sendMessage("Erro ao baixar a mídia.", { quotedMessageId: originalMessage.id._serialized });
                 return;
             }
 
@@ -36,7 +36,7 @@ async function handleStickerCommands(message, client) {
             isVideoOrGif = mime.startsWith('video') || mime.includes('gif');
 
             if (!(isImage || isVideoOrGif)) {
-                await originalMessage.reply("A mídia deve ser uma imagem ou vídeo curto.");
+                await chat.sendMessage("A mídia deve ser uma imagem ou vídeo curto.", { quotedMessageId: originalMessage.id._serialized });
                 return;
             }
 
@@ -86,7 +86,7 @@ async function handleStickerCommands(message, client) {
             if (err.message && err.message.includes('ffmpeg binary not found')) {
                 reply += "\n\nNão foi possível localizar o ffmpeg.";
             }
-            await originalMessage.reply(reply);
+            await chat.sendMessage(reply, { quotedMessageId: originalMessage.id._serialized });
         } finally {
             try {
                 let inputExt;
@@ -108,26 +108,44 @@ async function handleStickerCommands(message, client) {
         }
     }
 
-    if (message.hasMedia && message.body.trim().toLowerCase() === '#sticker') {
-        const media = await message.downloadMedia();
-        await processMedia(media, message.from, message);
-        return;
+    const text = message.body.trim().toLowerCase();
+    const stickerTypos = [
+        '#sticer', '#sticke', '#stickere', '#stiker', '#stikr', 
+        '#stickr', '#stick', '#sicker', '#stckr', '#stickers', 
+        '#stikere', '#stickee', '#stcker', '#ticker', '#ticke',
+        '#tiker', '#ticer', '#stickerer', '#stikerr', '#estiquer',
+        '#estiquere', '#stik'
+    ];
+    const chat = await message.getChat();
+
+    if (stickerTypos.includes(text)) {
+        await chat.sendMessage('O BURRO, DIGITA DIREITO!', { quotedMessageId: message.id._serialized });
+        return true;
     }
 
-    if (message.hasQuotedMsg && message.body.trim().toLowerCase() === '#sticker') {
+    if (message.hasMedia && text === '#sticker') {
+        const media = await message.downloadMedia();
+        await processMedia(media, chat.id._serialized, message);
+        return true;
+    }
+
+    if (message.hasQuotedMsg && text === '#sticker') {
         const quotedMsg = await message.getQuotedMessage();
         if (quotedMsg.hasMedia) {
             const media = await quotedMsg.downloadMedia();
-            await processMedia(media, message.from, message);
-            return;
+            await processMedia(media, chat.id._serialized, message);
+            return true;
         }
     }
 
-    if (message.body.trim().toLowerCase() === '#link') {
+    if (text === '#link') {
         const groupLink = 'https://chat.whatsapp.com/KAg83JlOyWSGoHLBOLwrR8';
         const replyMessage = `*Link do nosso grupo:*\n\n${groupLink}`;
-        await message.reply(replyMessage);
+        await chat.sendMessage(replyMessage, { quotedMessageId: message.id._serialized });
+        return true;
     }
+
+    return false;
 }
 
 module.exports = { handleStickerCommands };
