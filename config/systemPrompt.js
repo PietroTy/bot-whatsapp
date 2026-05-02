@@ -1,7 +1,7 @@
 // config/systemPrompt.js
 
-export const BOT_NAME = "Ty";
-export const CRIADOR = "Pietro";
+const BOT_NAME = "Ty";
+const CRIADOR = "Pietro";
 
 const SYSTEM_PROMPT_PT = `
 <prompt version="1.4">
@@ -330,7 +330,7 @@ const SYSTEM_PROMPT_PT = `
 `;
 
 function getSystemPrompt() {
-    return { role: "system", content: SYSTEM_PROMPT };
+    return { role: "system", content: SYSTEM_PROMPT_PT };
 }
 
 module.exports = { getSystemPrompt, BOT_NAME, CRIADOR };
