@@ -25,11 +25,14 @@ function getEditionNumber() {
     return 1;
 }
 
-function incrementEditionNumber() {
+function incrementEditionNumber(messageId) {
     const currentEdition = getEditionNumber();
     const newEdition = currentEdition + 1;
     try {
-        fs.writeFileSync(COUNTER_FILE, JSON.stringify({ edition: newEdition }), 'utf8');
+        fs.writeFileSync(COUNTER_FILE, JSON.stringify({ 
+            edition: newEdition,
+            lastProcessedId: messageId 
+        }), 'utf8');
     } catch (error) {
         console.error("Erro ao salvar o contador do jornal:", error);
     }
@@ -322,7 +325,7 @@ async function handleAutomaticNews(message, client) {
         }
         console.log("Jornal dividido em 4 partes com sucesso.");
 
-        const editionNumber = incrementEditionNumber();
+        const editionNumber = incrementEditionNumber(message.id._serialized);
         const freeGames = await fetchEpicFreeGames();
         let freeGamesText = "Nenhum jogo grátis encontrado hoje.";
         if (freeGames.length > 0) {
@@ -419,13 +422,7 @@ async function handleAutomaticNews(message, client) {
         try {
             allChats = await getChatsWithRetry(client);
 
-            console.log('================ Chats recebidos ================');
-            allChats.forEach(c => {
-                const name = c.name || '<sem nome>';
-                const id = c.id?._serialized || '<sem id>';
-                console.log(`- ${name} (${id})`);
-            });
-            console.log('================================================');
+            // O log de chats foi removido para evitar poluição no console.
         } catch (err) {
             console.error("Erro irrecuperável ao recuperar chats, enviarei apenas à mensagem original:", err);
         }
@@ -477,6 +474,13 @@ async function handleNewsCommands(message, client) {
         const isNewsletter = message.author === NEWSLETTER_AUTHOR_ID;
         
         if (isNewsletter) {
+            // Verifica se este ID de mensagem já foi processado para evitar duplicidade (ex: reinicialização do bot)
+            const counterData = fs.existsSync(COUNTER_FILE) ? JSON.parse(fs.readFileSync(COUNTER_FILE, 'utf8')) : {};
+            if (counterData.lastProcessedId === message.id._serialized) {
+                // console.log("[Newsletter] Mensagem já processada anteriormente. Ignorando.");
+                return false;
+            }
+
             console.log("[Newsletter] Detectado por author ID");
             await handleAutomaticNews(message, client);
             return true;
