@@ -30,8 +30,8 @@ async function perguntarIA(messages) {
         const response = await client.chat.completions.create({
             model: "sabiazim-3",
             messages: messages,
-            temperature: 0.7,
-            max_tokens: 1500
+            temperature: 0.1,
+            max_tokens: 4096
         });
 
         return response.choices[0].message.content.trim();

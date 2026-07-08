@@ -97,6 +97,55 @@ function checkAniversariantes(textoDoJornal) {
         .map(p => p.nome);
 }
 
+
+
+async function fetchWeather() {
+    try {
+        const urlSP = "https://api.open-meteo.com/v1/forecast?latitude=-23.5489&longitude=-46.6388&daily=temperature_2m_max,temperature_2m_min,weathercode&timezone=America/Sao_Paulo&forecast_days=1";
+        const urlSJ = "https://api.open-meteo.com/v1/forecast?latitude=-21.9686&longitude=-46.7978&daily=temperature_2m_max,temperature_2m_min,weathercode&timezone=America/Sao_Paulo&forecast_days=1";
+
+        const [resSP, resSJ] = await Promise.all([
+            axios.get(urlSP),
+            axios.get(urlSJ)
+        ]);
+
+        const weatherCodes = {
+            0: "Céu limpo",
+            1: "Principalmente limpo", 2: "Parcialmente nublado", 3: "Nublado",
+            45: "Nevoeiro", 48: "Nevoeiro com geada",
+            51: "Chuvisco leve", 53: "Chuvisco moderado", 55: "Chuvisco denso",
+            56: "Chuvisco congelante leve", 57: "Chuvisco congelante denso",
+            61: "Chuva leve", 63: "Chuva moderada", 65: "Chuva forte",
+            66: "Chuva congelante leve", 67: "Chuva congelante forte",
+            71: "Queda de neve leve", 73: "Queda de neve moderada", 75: "Queda de neve forte",
+            77: "Granizo",
+            80: "Aguaceiros leves", 81: "Aguaceiros moderados", 82: "Aguaceiros violentos",
+            85: "Aguaceiros de neve leves", 86: "Aguaceiros de neve fortes",
+            95: "Trovoada leve ou moderada",
+            96: "Trovoada com granizo leve", 99: "Trovoada com granizo forte"
+        };
+
+        const getDesc = (code) => weatherCodes[code] || "Tempo instável";
+
+        const tempMaxSP = Math.round(resSP.data.daily.temperature_2m_max[0]);
+        const tempMinSP = Math.round(resSP.data.daily.temperature_2m_min[0]);
+        const codeSP = resSP.data.daily.weathercode[0];
+        const descSP = getDesc(codeSP);
+
+        const tempMaxSJ = Math.round(resSJ.data.daily.temperature_2m_max[0]);
+        const tempMinSJ = Math.round(resSJ.data.daily.temperature_2m_min[0]);
+        const codeSJ = resSJ.data.daily.weathercode[0];
+        const descSJ = getDesc(codeSJ);
+
+        return `São Paulo: ${descSP}, ${tempMinSP}°C a ${tempMaxSP}°C | SJBV: ${descSJ}, ${tempMinSJ}°C a ${tempMaxSJ}°C`;
+    } catch (error) {
+        console.error("Erro ao buscar previsão do tempo:", error.message);
+        return "Previsão indisponível hoje.";
+    }
+}
+
+
+
 function splitViniMunews(textoCompleto) {
     const inicioSecaoNoticias1 = '*🇧🇷 BRASIL GERAL*';
     const possiveisSecoes2 = [
@@ -145,7 +194,7 @@ function splitViniMunews(textoCompleto) {
     return { introducao, secaoNoticias1, secaoNoticias2, secaoNoticias3 };
 }
 
-function getPromptParte1(textoIntroducao, editionNumber) {
+function getPromptParte1(textoIntroducao, editionNumber, previsaoTempo) {
     return `
 Você é um editor de jornal digital (PITMUNEWS) com foco em design limpo e consistência. Sua tarefa é criar a **PARTE INTRODUTÓRIA** do jornal.
 
@@ -153,6 +202,7 @@ Você é um editor de jornal digital (PITMUNEWS) com foco em design limpo e cons
 - A saída deve ser **TEXTO PURO**.
 - **NUNCA use formatação markdown**, como \`*\`, \`###\` ou \`\`\`
 - Para títulos de seção (ex: "HOJE É DIA...", "UTILIDADES"), use os emojis originais do texto-fonte e deixe os títulos limpos.
+- A resposta deve ser **INTEIRAMENTE em português do Brasil (pt-BR)**. Nunca traduza os cabeçalhos, termos ou títulos para outro idioma (como chinês ou inglês).
 
 **TEXTO DE ORIGEM (INTRODUÇÃO DO VINIMUNEWS):**
 \`\`\`
@@ -175,7 +225,8 @@ ${textoIntroducao}
     -   Liste os seguintes itens de forma limpa, um por linha:
     -   \`⏳ Dia do Ano:\` [Extraia do texto de origem]
     -   \`🌘 Fase da Lua:\` [Extraia a fase e a visibilidade]
-    -   \`☀ Tempo em São Paulo:\` [Resuma a previsão para SÃO PAULO/SP em uma frase]
+    -   \`☀ Previsão do Tempo:\` ${previsaoTempo}
+    -   \`🎂 Aniversário de Famosos:\` [Escolha de 3 a 5 dos aniversariantes mais conhecidos e relevantes para o público brasileiro da seção "🎂 FAMOSOS ANIVERSARIANTES" no texto de origem (remova as bandeiras de país/emojis e reordene a idade em formato de parênteses se necessário, mantendo o padrão Nome (idade) - descrição. Exemplo: Alesso (35 anos) - DJ Produtor Musical)]
     -   \`🪐 Horóscopo:\` [Resuma a previsão do signo em no máximo duas frases curtas]
 
 4.  **NÃO INCLUA NADA MAIS.**
@@ -238,19 +289,19 @@ ${textoNoticias2}
 
 function getPromptParte4(textoNoticias3, indicadores) {
     return `
-Você é um editor de jornal digital (PITMUNEWS). Sua tarefa é criar a parte de **ECONOMIA, ESPORTES E ENTRETENIMENTO**.
+Você é um editor de jornal digital (PITMUNEWS). Sua tarefa é criar a parte de **ECONOMIA E ESPORTES**.
 
 **REGRAS DE FORMATAÇÃO (MUITO IMPORTANTE):**
 - A saída final deve ser **TEXTO PURO**.
 - **NÃO use NENHUM tipo de formatação markdown**, como \`###\` para títulos ou \`\`\` para blocos de código.
-- Extraia APENAS as manchetes dessas seções que já estiverem no texto abaixo.
+- Extraia APENAS as manchetes de ECONOMIA e ESPORTES que já estiverem no texto abaixo.
 - Mantenha os emojis originais no início de cada manchete.
 - Remova fontes no final da linha (ex: "(CNN)").
 - Apresente cada manchete em uma linha separada.
 - Comece cada seção com seu título em uma nova linha, contendo apenas os emojis e o nome da seção. Exemplo:
   💰 ECONOMIA 💰
   🏆 ESPORTES 🏆
-  🌟 FAMA & ENTRETENIMENTO 🌟
+- **NÃO inclua a seção de Fama, Entretenimento ou qualquer outra que não seja Economia ou Esportes.**
 
 - Na seção ECONOMIA, ao final da lista de manchetes, adicione a linha de indicadores:
 ${indicadores}
@@ -308,6 +359,7 @@ async function processarParteIA(prompt, parteIndex) {
 async function handleAutomaticNews(message, client) {
     try {
         console.log("Iniciando processamento do VINIMUNEWS...");
+        const chat = await message.getChat();
         const textoCompletoDoEditor = message.body;
 
         let mensagemAniversario = '';
@@ -326,7 +378,12 @@ async function handleAutomaticNews(message, client) {
         console.log("Jornal dividido em 4 partes com sucesso.");
 
         const editionNumber = incrementEditionNumber(message.id._serialized);
-        const freeGames = await fetchEpicFreeGames();
+
+        const [freeGames, weather] = await Promise.all([
+            fetchEpicFreeGames(),
+            fetchWeather()
+        ]);
+
         let freeGamesText = "Nenhum jogo grátis encontrado hoje.";
         if (freeGames.length > 0) {
             freeGamesText = freeGames.join(' | ');
@@ -340,7 +397,7 @@ async function handleAutomaticNews(message, client) {
             : 'Não foi possível carregar o vídeo do Mestre hoje.\n';
 
         const indicadores = await fetchEconomicIndicators();
-        const prompt1 = getPromptParte1(partes.introducao, editionNumber);
+        const prompt1 = getPromptParte1(partes.introducao, editionNumber, weather);
         const prompt2 = getPromptParte2(partes.secaoNoticias1);
         const prompt3 = getPromptParte3(partes.secaoNoticias2, freeGamesText);
         const prompt4 = getPromptParte4(partes.secaoNoticias3, indicadores);
