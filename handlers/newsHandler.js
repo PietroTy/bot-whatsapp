@@ -359,7 +359,6 @@ async function processarParteIA(prompt, parteIndex) {
 async function handleAutomaticNews(message, client) {
     try {
         console.log("Iniciando processamento do VINIMUNEWS...");
-        const chat = await message.getChat();
         const textoCompletoDoEditor = message.body;
 
         let mensagemAniversario = '';
@@ -507,13 +506,13 @@ async function handleAutomaticNews(message, client) {
                 const stickerMedia = MessageMedia.fromFilePath(stickerPath);
                 for (const group of targetGroups) {
                      await client.sendMessage(group.id._serialized, stickerMedia, { sendMediaAsSticker: true });
-                }
+                 }
             }
             console.log("Envio concluído com sucesso.");
         } else {
             console.warn("Jornal gerado, mas nenhum grupo de destino foi encontrado.");
 
-            await chat.sendMessage(jornalCompleto, { quotedMessageId: message.id._serialized });
+            await message.reply(jornalCompleto);
         }
     } catch (error) {
         console.error("Erro no fluxo principal de handleAutomaticNews:", error);
@@ -526,10 +525,18 @@ async function handleAutomaticNews(message, client) {
 
 async function handleNewsCommands(message, client) {
     try {
-        const chat = await message.getChat();
-        
-        const isNewsletter = message.author === NEWSLETTER_AUTHOR_ID;
-        
+        // Extrai o author de forma resiliente, igual ao padrão do stickerHandler
+        const authorResolvido =
+            message.author ||
+            message._data?.author ||
+            message._data?.authorId ||
+            message._data?.id?.participant ||
+            null;
+
+        console.log(`[Newsletter] author recebido: ${authorResolvido} | esperado: ${NEWSLETTER_AUTHOR_ID}`);
+
+        const isNewsletter = authorResolvido === NEWSLETTER_AUTHOR_ID;
+
         if (isNewsletter) {
             // Verifica se este ID de mensagem já foi processado para evitar duplicidade (ex: reinicialização do bot)
             const counterData = fs.existsSync(COUNTER_FILE) ? JSON.parse(fs.readFileSync(COUNTER_FILE, 'utf8')) : {};

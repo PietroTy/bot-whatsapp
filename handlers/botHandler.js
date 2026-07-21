@@ -15,7 +15,8 @@ const comandos = [
     { cmd: "`#quarteto`",          desc: "Inicia uma partida de termo com 4 palavras simultâneas." },
     { cmd: "`#octeto`",            desc: "Inicia uma partida de termo com 8 palavras simultâneas." },
     { cmd: "`#16teto`",            desc: "Inicia uma partida de termo com 16 palavras simultâneas." },
-    { cmd: "`#exit`",              desc: "Termina a partida ativa no momento." }
+    { cmd: "`#exit`",              desc: "Termina a partida ativa no momento." },
+    { cmd: "`#enxug`",             desc: "e o pietro só no kibe" }
 ];
 
 /**
@@ -24,19 +25,32 @@ const comandos = [
  */
 async function handleBotCommands(message) {
     const text = message.body.toLowerCase();
-    if (!text.startsWith('#bot') && text !== '#help') return false;
+    if (!text.startsWith('#bot') && text !== '#help' && text !== '#enxug') return false;
 
-    const chat = await message.getChat();
+    if (text === '#enxug') {
+        await message.reply('E o pietro... só no kibe!');
+        return true;
+    }
 
-    if (chat.isGroup && chat.name === "zapbot#sticker" && text.startsWith('#bot')) {
-        await chat.sendMessage("Neste grupo, o comando `#bot` foi desativado. Use `#sticker` para criar stickers a partir de mídias.", { quotedMessageId: message.id._serialized });
+    let chat;
+    try {
+        chat = await message.getChat();
+    } catch (err) {
+        console.error("Erro ao obter chat no botHandler:", err.message || err);
+    }
+
+    const isGroup = chat ? chat.isGroup : message.from.endsWith('@g.us');
+    const chatName = chat ? chat.name : '';
+
+    if (isGroup && chatName === "zapbot#sticker" && text.startsWith('#bot')) {
+        await message.reply("Neste grupo, o comando `#bot` foi desativado. Use `#sticker` para criar stickers a partir de mídias.");
         return true;
     }
 
     if (text === '#help') {
         let lista = `🤖 *ZapBot v${version}*\n\n*Comandos disponíveis:*\n`;
         comandos.forEach(c => { lista += `${c.cmd}  →  ${c.desc}\n`; });
-        await chat.sendMessage(lista, { quotedMessageId: message.id._serialized });
+        await message.reply(lista);
         return true;
     }
 
@@ -50,10 +64,16 @@ async function handleBotCommands(message) {
         let userContent = text;
 
         if (message.hasQuotedMsg) {
-            const quotedMessage = await message.getQuotedMessage();
-            if (quotedMessage.hasMedia) return false;
-            const contextMessage = quotedMessage.body || "Mensagem sem texto.";
-            userContent = `Considerando a mensagem anterior: "${contextMessage}"\n\nResponda a isto: "${text}"`;
+            try {
+                const quotedMessage = await message.getQuotedMessage();
+                if (quotedMessage) {
+                    if (quotedMessage.hasMedia) return false;
+                    const contextMessage = quotedMessage.body || "Mensagem sem texto.";
+                    userContent = `Considerando a mensagem anterior: "${contextMessage}"\n\nResponda a isto: "${text}"`;
+                }
+            } catch (err) {
+                console.warn('Erro ao obter mensagem citada no botHandler:', err.message || err);
+            }
         }
 
         chatHistory[userId].push({ role: "user", content: userContent });
@@ -66,10 +86,10 @@ async function handleBotCommands(message) {
             chatHistory[userId] = [getSystemPrompt(), ...chatHistory[userId].slice(-19)];
         }
 
-        await chat.sendMessage(resposta, { quotedMessageId: message.id._serialized });
+        await message.reply(resposta);
     } catch (error) {
         console.error("Erro no handleBotCommands:", error);
-        await chat.sendMessage("Desculpe, ocorreu um erro ao processar sua solicitação com a IA.", { quotedMessageId: message.id._serialized });
+        await message.reply("Desculpe, ocorreu um erro ao processar sua solicitação com a IA.");
     }
 
     return true;

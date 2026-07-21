@@ -28,7 +28,7 @@ async function perguntarIA(messages) {
 
     try {
         const response = await client.chat.completions.create({
-            model: "sabiazim-3",
+            model: "sabiazinho-4",
             messages: messages,
             temperature: 0.1,
             max_tokens: 4096

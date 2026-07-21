@@ -169,13 +169,11 @@ setInterval(async () => {
     if (isRestarting || !client) return;
     try {
         const state = await client.getState();
-        if (!state) throw new Error("Sem estado");
+        if (state) {
+            // connection is healthy
+        }
     } catch (err) {
-        console.log("Cliente caiu — reiniciando sessão...");
-        try {
-            await client.destroy();
-        } catch {}
-        safeInitialize();
+        console.warn("Aviso: client.getState() falhou (provável mudança no WA Web). O bot não será reiniciado forçadamente para evitar loop de quedas.");
     }
 }, 60 * 1000);
 
