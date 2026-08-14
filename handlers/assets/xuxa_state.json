@@ -1,7 +1,8 @@
 {
-  "currentLetter": "A",
-  "theme": "Filmes, Séries ou Desenhos",
+  "currentLetter": "B",
+  "theme": "Objetos do Dia a Dia",
   "userCounts": {},
-  "lastResetDate": "2026-08-13",
-  "gameStarted": false
+  "lastResetDate": "2026-08-14",
+  "gameStarted": false,
+  "gameCompletedToday": true
 }

@@ -34,6 +34,24 @@ function getTodayDateString() {
     return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
+function extractRawNumber(idStr) {
+    if (!idStr) return '';
+    return String(idStr).split('@')[0].split(':')[0].trim();
+}
+
+function isUserPlayed(participant, userCounts) {
+    if (!participant || !participant.id) return false;
+    const pId = participant.id._serialized || participant.id;
+    const pNum = extractRawNumber(pId);
+
+    for (const key of Object.keys(userCounts || {})) {
+        if (key === pId) return true;
+        const keyNum = extractRawNumber(key);
+        if (keyNum && pNum && keyNum === pNum) return true;
+    }
+    return false;
+}
+
 function loadGameState() {
     try {
         if (fs.existsSync(STATE_FILE)) {
@@ -43,7 +61,8 @@ function loadGameState() {
                 theme: data.theme || THEMES[0],
                 userCounts: data.userCounts || {},
                 lastResetDate: data.lastResetDate || '',
-                gameStarted: data.gameStarted !== undefined ? data.gameStarted : false
+                gameStarted: data.gameStarted !== undefined ? data.gameStarted : false,
+                gameCompletedToday: data.gameCompletedToday !== undefined ? data.gameCompletedToday : false
             };
         }
     } catch (e) {
@@ -54,7 +73,8 @@ function loadGameState() {
         theme: THEMES[0],
         userCounts: {},
         lastResetDate: '',
-        gameStarted: false
+        gameStarted: false,
+        gameCompletedToday: false
     };
 }
 
@@ -84,7 +104,8 @@ function getSenderId(message) {
 
 async function isUserAdmin(chat, userId) {
     if (!chat || !chat.participants) return false;
-    const participant = chat.participants.find(p => p.id._serialized === userId);
+    const userNum = extractRawNumber(userId);
+    const participant = chat.participants.find(p => p.id._serialized === userId || extractRawNumber(p.id._serialized) === userNum);
     return participant ? (participant.isAdmin || participant.isSuperAdmin) : false;
 }
 
@@ -95,7 +116,7 @@ async function banUser(chat, client, userId, reason) {
     }
 
     const botId = client?.info?.wid?._serialized;
-    if (botId && userId === botId) {
+    if (botId && (userId === botId || extractRawNumber(userId) === extractRawNumber(botId))) {
         return false;
     }
 
@@ -159,47 +180,45 @@ REGRAS DE SOBREVIVÊNCIA:
 • Falou MAIS de 3 palavras no mesmo dia? BAN.`;
 }
 
-async function executeRoundResetAndBans(client, reasonLabel) {
+async function executeDailyReset(client) {
     const state = loadGameState();
     const todayStr = getTodayDateString();
 
     try {
         const chat = await client.getChatById(XUXA_GROUP_ID);
         if (!chat || !chat.participants) {
-            console.error("Grupo ABCdário da Xuxa não encontrado ao resetar rodada.");
+            console.error("Grupo ABCdário da Xuxa não encontrado ao executar reset diário.");
             return;
         }
 
-        const playedUserIds = Object.keys(state.userCounts || {});
-        const isFirstRun = !state.gameStarted || playedUserIds.length === 0;
-        const unplayedNonAdmins = [];
-
+        const playedUserIds = state.userCounts || {};
+        const wasGameActiveYesterday = state.gameStarted && !state.gameCompletedToday && Object.keys(playedUserIds).length > 0;
         const botId = client?.info?.wid?._serialized;
 
-        // Só realiza varredura de banimento se a rodada anterior estava ativa e teve participantes
-        if (!isFirstRun) {
+        // Se o jogo de ontem NÃO terminou no Z (ficou incompleto às 00:01), bane quem não participou ontem
+        if (wasGameActiveYesterday) {
+            const unplayedNonAdmins = [];
             for (const p of chat.participants) {
-                const pid = p.id._serialized;
                 const isAdmin = p.isAdmin || p.isSuperAdmin;
-                const isBot = botId && pid === botId;
-
-                if (!isAdmin && !isBot && !playedUserIds.includes(pid)) {
-                    unplayedNonAdmins.push(pid);
+                const isBot = botId && (p.id._serialized === botId || extractRawNumber(p.id._serialized) === extractRawNumber(botId));
+                if (!isAdmin && !isBot && !isUserPlayed(p, playedUserIds)) {
+                    unplayedNonAdmins.push(p.id._serialized);
                 }
             }
 
             if (unplayedNonAdmins.length > 0) {
-                console.log(`[Xuxa Game] Banindo silenciosamente ${unplayedNonAdmins.length} membro(s) não participantes...`);
+                console.log(`[Xuxa Game] Reset 00:01. Banindo silenciosamente ${unplayedNonAdmins.length} membro(s) não participantes do dia anterior...`);
                 try {
                     await chat.removeParticipants(unplayedNonAdmins);
                 } catch (err) {
-                    console.error("Erro ao banir não participantes em lote:", err.message);
+                    console.error("Erro ao banir não participantes no reset 00:01:", err.message);
                 }
             }
         } else {
-            console.log("[Xuxa Game] Início de rodada/primeira execução. Nenhum banimento por inatividade aplicado.");
+            console.log("[Xuxa Game] O jogo anterior foi concluído no Z ou era primeira execução. Nenhum banimento aplicado no reset das 00:01.");
         }
 
+        // Sorteia novo tema e reseta para a nova rodada
         const newTheme = getRandomTheme(state.theme);
         const botWordA = await gerarPalavraParaLetraA(newTheme);
 
@@ -208,7 +227,8 @@ async function executeRoundResetAndBans(client, reasonLabel) {
             theme: newTheme,
             userCounts: {},
             lastResetDate: todayStr,
-            gameStarted: true
+            gameStarted: true,
+            gameCompletedToday: false
         };
         saveGameState(newState);
 
@@ -221,7 +241,7 @@ async function executeRoundResetAndBans(client, reasonLabel) {
         // 3ª Mensagem: A de [Palavra]
         await chat.sendMessage(`A de ${botWordA}`);
     } catch (err) {
-        console.error("Erro no executeRoundResetAndBans:", err);
+        console.error("Erro no executeDailyReset:", err);
     }
 }
 
@@ -232,9 +252,10 @@ async function checkDailyXuxaReset(client) {
     const todayStr = getTodayDateString();
 
     const state = loadGameState();
-    if (hours === 0 && (minutes === 10 || minutes === 1) && state.lastResetDate !== todayStr) {
-        console.log(`[Xuxa Game] Executando reset diário automático (${todayStr})...`);
-        await executeRoundResetAndBans(client, "Reset Diário 00:10 AM");
+    // Executa às 00:01 AM se ainda não rodou hoje
+    if (hours === 0 && minutes === 1 && state.lastResetDate !== todayStr) {
+        console.log(`[Xuxa Game] Executando reset diário automático das 00:01 (${todayStr})...`);
+        await executeDailyReset(client);
     }
 }
 
@@ -252,22 +273,26 @@ async function handleXuxaGameMessage(message, client) {
 
         const state = loadGameState();
 
-        // Se a rodada ainda não começou (antes do reset automático das 00:01 AM), ignora conversas normais
-        if (!state.gameStarted) {
+        // Se a rodada não começou ou o jogo já foi concluído hoje (após o Z), ignora a mensagem (grupo livre)
+        if (!state.gameStarted || state.gameCompletedToday) {
             return false;
         }
 
         const chat = await message.getChat();
+        const expectedLetter = state.currentLetter.toUpperCase();
 
         // Pega a primeira linha da mensagem
         const firstLine = body.split('\n')[0].trim();
 
-        // Se a mensagem parecer uma tentativa de jogada mas não seguir o formato "X de Y":
-        const isAttempt = /^([a-zÀ-ÿ])(\s*[:\-\=]|\s+[a-zÀ-ÿ]+)/i.test(firstLine) || /^letra\s+[a-z]/i.test(firstLine);
+        // Tenta dar match exato no formato "<Letra> de <Palavra>"
         const match = firstLine.match(/^([a-zà-ÿ])\s+de\s+(.+)$/i);
 
         if (!match) {
-            if (isAttempt) {
+            // Verifica se é uma tentativa de jogada inválida (ex: "Volts", "V-vacuo", "V: vacuo", "Vacuo" ou começa com a letra esperada/padrão)
+            const startsWithExpected = firstLine.toUpperCase().startsWith(expectedLetter);
+            const isLetterPattern = /^([a-zÀ-ÿ])(\s*[:\-\=]|\s+[a-zÀ-ÿ]+)/i.test(firstLine) || /^letra\s+[a-z]/i.test(firstLine);
+
+            if (startsWithExpected || isLetterPattern) {
                 await banUser(chat, client, senderId, 'Não usou o formato correto "X de Y" (ex: "A de Amor").');
                 return true;
             }
@@ -276,7 +301,6 @@ async function handleXuxaGameMessage(message, client) {
 
         const inputLetter = match[1].toUpperCase();
         const inputPhrase = match[2].trim();
-        const expectedLetter = state.currentLetter.toUpperCase();
 
         const currentCount = state.userCounts[senderId] || 0;
         if (currentCount >= 3) {
@@ -295,14 +319,50 @@ async function handleXuxaGameMessage(message, client) {
             return true;
         }
 
+        // Registra a jogada do usuário no mapa (usando tanto o senderId quanto o número bruto)
         state.userCounts[senderId] = (state.userCounts[senderId] || 0) + 1;
+        const rawSenderNum = extractRawNumber(senderId);
+        if (rawSenderNum) {
+            state.userCounts[rawSenderNum] = (state.userCounts[rawSenderNum] || 0) + 1;
+        }
 
         const currentIndex = ALPHABET.indexOf(expectedLetter);
 
+        // SE CHEGOU NA LETRA Z (CONCLUSÃO DO ALFABETO)
         if (expectedLetter === 'Z' || currentIndex === ALPHABET.length - 1) {
-            await message.reply(`*${inputLetter} de ${inputPhrase}* APROVADO!\n\nO ALFABETO FOI CONCLUÍDO!`);
+            await message.reply(`*${inputLetter} de ${inputPhrase}* APROVADO!`);
+
             saveGameState(state);
-            await executeRoundResetAndBans(client, "Alfabeto Concluído (Letra Z)");
+
+            // Audit de banimento silencioso APENAS de quem não jogou NENHUMA vez nesta rodada
+            const playedMap = state.userCounts || {};
+            const botId = client?.info?.wid?._serialized;
+            const unplayedNonAdmins = [];
+
+            for (const p of chat.participants) {
+                const isAdmin = p.isAdmin || p.isSuperAdmin;
+                const isBot = botId && (p.id._serialized === botId || extractRawNumber(p.id._serialized) === extractRawNumber(botId));
+
+                if (!isAdmin && !isBot && !isUserPlayed(p, playedMap)) {
+                    unplayedNonAdmins.push(p.id._serialized);
+                }
+            }
+
+            if (unplayedNonAdmins.length > 0) {
+                console.log(`[Xuxa Game] Alfabeto Z concluído! Banindo silenciosamente ${unplayedNonAdmins.length} membro(s) não participantes...`);
+                try {
+                    await chat.removeParticipants(unplayedNonAdmins);
+                } catch (err) {
+                    console.error("Erro ao banir não participantes ao concluir Z:", err.message);
+                }
+            }
+
+            // Marca o jogo como concluído hoje (bloqueia novos jogos até 00:01 AM de amanhã)
+            state.gameCompletedToday = true;
+            state.gameStarted = false;
+            saveGameState(state);
+
+            await chat.sendMessage("CONSEGUIRAM! O ALFABETO FOI CONCLUÍDO!\n\nAproveitem o dia livre! Até as 00:01 ninguém mais é banido.");
             return true;
         }
 
@@ -321,5 +381,5 @@ async function handleXuxaGameMessage(message, client) {
 module.exports = {
     handleXuxaGameMessage,
     checkDailyXuxaReset,
-    executeRoundResetAndBans
+    executeDailyReset
 };
