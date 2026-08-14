@@ -25,14 +25,38 @@ function getEditionNumber() {
     return 1;
 }
 
+function getMessageId(message) {
+    if (!message) return null;
+    if (typeof message.id === 'string' && message.id.length > 0) return message.id;
+    if (message.id && typeof message.id === 'object') {
+        if (message.id._serialized) return message.id._serialized;
+        if (message.id.id) return message.id.id;
+    }
+    if (message._data && message._data.id) {
+        if (typeof message._data.id === 'string') return message._data.id;
+        if (message._data.id._serialized) return message._data.id._serialized;
+        if (message._data.id.id) return message._data.id.id;
+    }
+    return null;
+}
+
+function getTodayDateString() {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
 function incrementEditionNumber(messageId) {
     const currentEdition = getEditionNumber();
     const newEdition = currentEdition + 1;
+    const safeMsgId = messageId || `msg_${Date.now()}`;
+    const todayStr = getTodayDateString();
     try {
         fs.writeFileSync(COUNTER_FILE, JSON.stringify({ 
             edition: newEdition,
-            lastProcessedId: messageId 
-        }), 'utf8');
+            lastProcessedId: safeMsgId,
+            lastProcessedDate: todayStr
+        }, null, 2), 'utf8');
     } catch (error) {
         console.error("Erro ao salvar o contador do jornal:", error);
     }
@@ -147,38 +171,46 @@ async function fetchWeather() {
 
 
 function splitViniMunews(textoCompleto) {
-    const inicioSecaoNoticias1 = '*🇧🇷 BRASIL GERAL*';
-    const possiveisSecoes2 = [
-        '*💓 SAÚDE 💓*',
-        '*💻 TECNOLOGIA & CIÊNCIA*',
-        '*🎮 GAMES*'
-    ];
-    const possiveisSecoes3 = [
-        '*💰 ECONOMIA*',
-        '*⚽🏀 ESPORTES*',
-        '*🌟 FAMA & ENTRETENIMENTO*'
-    ];
-
-    const index1 = textoCompleto.indexOf(inicioSecaoNoticias1);
-    if (index1 === -1) {
-        console.error("Seção 'BRASIL GERAL' não encontrada.");
+    if (!textoCompleto || typeof textoCompleto !== 'string' || textoCompleto.length < 200) {
         return null;
     }
 
+    const regex1 = /\*?🇧🇷\s*BRASIL GERAL\*?/i;
+    const regexes2 = [
+        /\*?💓\s*SAÚDE\s*💓\*?/i,
+        /\*?💻\s*TECNOLOGIA\s*&\s*CIÊNCIA\*?/i,
+        /\*?🎮\s*GAMES\*?/i
+    ];
+    const regexes3 = [
+        /\*?💰\s*ECONOMIA\*?/i,
+        /\*?⚽🏀\s*ESPORTES\*?/i,
+        /\*?🌟\s*FAMA\s*&\s*ENTRETENIMENTO\*?/i
+    ];
+
+    const match1 = textoCompleto.match(regex1);
+    const hasHeader = /VINIMUNEWS|HOJE É DIA/i.test(textoCompleto);
+
+    if (!match1 || !hasHeader) {
+        // Mensagem avulsa ou aviso (não possui a estrutura completa do jornal)
+        return null;
+    }
+    const index1 = match1.index;
+
     let index2 = -1;
-    for (const secao of possiveisSecoes2) {
-        const i = textoCompleto.indexOf(secao, index1);
-        if (i !== -1 && i > index1) {
-            index2 = i;
+    for (const reg of regexes2) {
+        const m = textoCompleto.slice(index1).match(reg);
+        if (m) {
+            index2 = index1 + m.index;
             break;
         }
     }
 
     let index3 = -1;
-    for (const secao of possiveisSecoes3) {
-        const i = textoCompleto.indexOf(secao, index2 !== -1 ? index2 : index1);
-        if (i !== -1 && i > (index2 !== -1 ? index2 : index1)) {
-            index3 = i;
+    const searchStart3 = index2 !== -1 ? index2 : index1;
+    for (const reg of regexes3) {
+        const m = textoCompleto.slice(searchStart3).match(reg);
+        if (m) {
+            index3 = searchStart3 + m.index;
             break;
         }
     }
@@ -376,7 +408,7 @@ async function handleAutomaticNews(message, client) {
         }
         console.log("Jornal dividido em 4 partes com sucesso.");
 
-        const editionNumber = incrementEditionNumber(message.id._serialized);
+        const editionNumber = incrementEditionNumber(getMessageId(message));
 
         const [freeGames, weather] = await Promise.all([
             fetchEpicFreeGames(),
@@ -523,6 +555,113 @@ async function handleAutomaticNews(message, client) {
     }
 }
 
+function getTimestampLog() {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return `[${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}]`;
+}
+
+const RAW_NEWSLETTER_CACHE = path.join(__dirname, 'assets/tmp/last_newsletter_raw.txt');
+
+function saveNewsletterCache(text) {
+    try {
+        const dir = path.dirname(RAW_NEWSLETTER_CACHE);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(RAW_NEWSLETTER_CACHE, text, 'utf8');
+    } catch (e) {}
+}
+
+function getNewsletterCache() {
+    try {
+        if (fs.existsSync(RAW_NEWSLETTER_CACHE)) {
+            const text = fs.readFileSync(RAW_NEWSLETTER_CACHE, 'utf8');
+            if (text && splitViniMunews(text)) {
+                return text;
+            }
+        }
+    } catch (e) {}
+    return null;
+}
+
+const SOURCE_GROUPS = CONFIG.newsletter.sourceGroups || ["120363417435454821@g.us", NEWSLETTER_AUTHOR_ID];
+
+async function findLatestNewsletterMsg(client) {
+    // 1. Tenta buscar a mensagem diretamente no grupo de origem "VINIMUNEWS 📰🗞️ 4" (120363417435454821@g.us)
+    if (client) {
+        try {
+            const sourceGroupId = "120363417435454821@g.us";
+            const groupChat = await client.getChatById(sourceGroupId);
+            if (groupChat && typeof groupChat.fetchMessages === 'function') {
+                const msgs = await groupChat.fetchMessages({ limit: 30 });
+                if (msgs && msgs.length > 0) {
+                    for (let i = msgs.length - 1; i >= 0; i--) {
+                        const m = msgs[i];
+                        if (m && m.body && splitViniMunews(m.body) !== null) {
+                            saveNewsletterCache(m.body);
+                            return m;
+                        }
+                    }
+                }
+            }
+        } catch (groupErr) {
+            console.warn("Aviso ao buscar mensagens no grupo VINIMUNEWS 4:", groupErr.message);
+        }
+    }
+
+    // 2. Tenta buscar via Puppeteer na memória do Store.Msg
+    if (client && client.pupPage) {
+        try {
+            const storeResult = await client.pupPage.evaluate(() => {
+                let msgs = [];
+                if (window.Store && window.Store.Msg && window.Store.Msg.models) {
+                    msgs = msgs.concat(window.Store.Msg.models);
+                }
+                if (window.Store && window.Store.NewsletterMsgs && window.Store.NewsletterMsgs.models) {
+                    msgs = msgs.concat(window.Store.NewsletterMsgs.models);
+                }
+                const filtered = [];
+                const searchKeys = ['120363417435454821', '231790962819089', '5513996911070', '996911070'];
+                for (const m of msgs) {
+                    const author = String(m.author?._serialized || m.author || m.from?._serialized || m.from || m.id?.remote || '');
+                    const body = m.body || m.caption || '';
+                    if (searchKeys.some(k => author.includes(k)) && body.length > 100) {
+                        filtered.push({
+                            id: m.id?._serialized || m.id?.id || String(m.id),
+                            body: body,
+                            timestamp: m.t || m.timestamp || 0
+                        });
+                    }
+                }
+                filtered.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+                return filtered.length > 0 ? filtered[0] : null;
+            });
+
+            if (storeResult && storeResult.body && splitViniMunews(storeResult.body) !== null) {
+                saveNewsletterCache(storeResult.body);
+                return {
+                    body: storeResult.body,
+                    id: { _serialized: storeResult.id },
+                    timestamp: storeResult.timestamp
+                };
+            }
+        } catch (err) {
+            console.warn("Aviso: Erro ao consultar Store no Puppeteer:", err.message);
+        }
+    }
+
+    // 3. Fallback: Tenta carregar do cache salvo em disco se existir
+    const cachedText = getNewsletterCache();
+    if (cachedText) {
+        return {
+            body: cachedText,
+            id: { _serialized: `cached_raw_${Date.now()}` },
+            timestamp: Math.floor(Date.now() / 1000)
+        };
+    }
+
+    return null;
+}
+
 async function handleNewsCommands(message, client) {
     try {
         // Extrai o author de forma resiliente, igual ao padrão do stickerHandler
@@ -533,24 +672,91 @@ async function handleNewsCommands(message, client) {
             message._data?.id?.participant ||
             null;
 
-        console.log(`[Newsletter] author recebido: ${authorResolvido} | esperado: ${NEWSLETTER_AUTHOR_ID}`);
+        const fromGroupOrAuthor = `${message.from || ''} ${authorResolvido || ''}`;
+        const isFromSource = SOURCE_GROUPS.some(sg => fromGroupOrAuthor.includes(sg.split('@')[0]));
+        const isNewsletter = isFromSource && message.body && splitViniMunews(message.body) !== null;
+        const msgId = getMessageId(message);
 
-        const isNewsletter = authorResolvido === NEWSLETTER_AUTHOR_ID;
+        if (isNewsletter && message.body) {
+            saveNewsletterCache(message.body);
+        }
+
+        /*
+        // Suporte a comando manual `#jornal` ou `#pitmunews` (desativado/comentado)
+        const text = message.body ? message.body.trim().toLowerCase() : '';
+        if (text === '#jornal' || text === '#pitmunews') {
+            if (message.hasQuotedMsg) {
+                const quoted = await message.getQuotedMessage();
+                if (quoted && quoted.body) {
+                    await message.reply("Iniciando geração manual do PITMUNEWS a partir da mensagem citada...");
+                    await handleAutomaticNews(quoted, client);
+                    return true;
+                }
+            }
+            
+            // Se não citou nenhuma mensagem, busca automaticamente a última do canal na memória/cache
+            await message.reply("🔍 Buscando a última edição do jornal no canal da newsletter...");
+            const targetMsg = await findLatestNewsletterMsg(client);
+
+            if (targetMsg) {
+                await message.reply("📰 Última edição da newsletter encontrada! Gerando o PITMUNEWS...");
+                await handleAutomaticNews(targetMsg, client);
+                return true;
+            } else {
+                await message.reply("⚠️ Nenhuma edição do jornal foi encontrada na memória ainda. Responda/cite a mensagem do jornal diretamente com `#jornal`.");
+                return true;
+            }
+        }
+        */
 
         if (isNewsletter) {
-            // Verifica se este ID de mensagem já foi processado para evitar duplicidade (ex: reinicialização do bot)
+            console.log(`${getTimestampLog()} [Newsletter] Detectada mensagem da newsletter. Verificando filtros...`);
+
             const counterData = fs.existsSync(COUNTER_FILE) ? JSON.parse(fs.readFileSync(COUNTER_FILE, 'utf8')) : {};
-            if (counterData.lastProcessedId === message.id._serialized) {
-                // console.log("[Newsletter] Mensagem já processada anteriormente. Ignorando.");
+            const todayStr = getTodayDateString();
+
+            // 1. Filtro de 1 jornal por dia: se já foi enviado um jornal hoje, ignora novas mensagens automáticas
+            if (counterData.lastProcessedDate === todayStr) {
+                console.log(`${getTimestampLog()} [Newsletter] Mensagem ignorada: já foi enviado um jornal hoje (${todayStr}). Limite de 1 por dia.`);
                 return false;
             }
 
-            console.log("[Newsletter] Detectado por author ID");
+            // 2. Verifica se este ID de mensagem já foi processado para evitar duplicidade
+            if (msgId && counterData.lastProcessedId && counterData.lastProcessedId === msgId) {
+                console.log(`${getTimestampLog()} [Newsletter] Mensagem já processada anteriormente (${msgId}). Ignorando.`);
+                return false;
+            }
+
+            // 2. Filtro de Timestamp: Idade máxima da mensagem (para ignorar histórico antigo no boot)
+            if (message.timestamp) {
+                const nowSec = Math.floor(Date.now() / 1000);
+                const ageSec = nowSec - message.timestamp;
+                const maxAgeMinutes = CONFIG.newsletter.maxAgeMinutes || 15;
+                const maxAgeSec = maxAgeMinutes * 60;
+
+                if (ageSec > maxAgeSec) {
+                    console.log(`${getTimestampLog()} [Newsletter] Mensagem ignorada: antiga (recebida há ${Math.round(ageSec / 60)} min, limite: ${maxAgeMinutes} min).`);
+                    return false;
+                }
+
+                // 3. Filtro de Horário: Apenas envia no intervalo especificado (ex: 05h às 14h)
+                const msgDate = new Date(message.timestamp * 1000);
+                const msgHour = msgDate.getHours();
+                const startHour = CONFIG.newsletter.startHour ?? 5;
+                const endHour = CONFIG.newsletter.endHour ?? 14;
+
+                if (msgHour < startHour || msgHour >= endHour) {
+                    console.log(`${getTimestampLog()} [Newsletter] Mensagem ignorada: fora do horário permitido (${msgHour}h. Permitido: ${startHour}h-${endHour}h).`);
+                    return false;
+                }
+            }
+
+            console.log(`${getTimestampLog()} [Newsletter] Validações aprovadas. Iniciando automação do PITMUNEWS.`);
             await handleAutomaticNews(message, client);
             return true;
         }
     } catch (error) {
-        console.error("[Newsletter] Erro:", error.message);
+        console.error(`${getTimestampLog()} [Newsletter] Erro:`, error.message);
     }
     return false;
 }

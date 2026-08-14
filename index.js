@@ -10,14 +10,19 @@ const { handleStickerCommands } = require('./handlers/stickerHandler');
 const { handleNewsCommands } = require('./handlers/newsHandler');
 const { handleBotCommands } = require('./handlers/botHandler');
 const { handleTermoCommands } = require('./handlers/termoHandler');
+const { handleXuxaGameMessage, checkDailyXuxaReset } = require('./handlers/xuxaHandler');
 const { version } = require('./package.json');
 
 let client;
 let isRestarting = false;
 
 function cleanLockFiles() {
+    try {
+        require('child_process').execSync('pkill -f ".wwebjs_auth" || true');
+    } catch (e) {}
+
     const sessionPath = path.join(__dirname, '.wwebjs_auth', 'session');
-    const lockFiles = ['SingletonLock', 'SingletonSocket', 'SingletonCookie'];
+    const lockFiles = ['SingletonLock', 'SingletonSocket', 'SingletonCookie', 'Default/LOCK'];
     for (const file of lockFiles) {
         const filePath = path.join(sessionPath, file);
         if (fs.existsSync(filePath)) {
@@ -89,7 +94,7 @@ async function createClient() {
     });
 
     client.on('ready', () => console.log(`Bot v${version} está ON e pronto!`));
-    client.on('authenticated', () => console.log('Bot autenticado!'));
+    client.on('authenticated', () => console.log('Bot autenticado! Sincronizando mensagens e chats (aguarde 15-30s para o status ON)...'));
 
     client.on('auth_failure', (msg) => {
         console.error('Falha na autenticação:', msg);
@@ -110,6 +115,7 @@ async function createClient() {
             if (await handleStickerCommands(message, client)) return;
             if (await handleNewsCommands(message, client)) return;
             if (await handleTermoCommands(message, client)) return;
+            if (await handleXuxaGameMessage(message, client)) return;
             if (await handleBotCommands(message)) return;
         } catch (error) {
             console.error("Erro fatal no processamento da mensagem:", error);
@@ -170,12 +176,12 @@ setInterval(async () => {
     try {
         const state = await client.getState();
         if (state) {
-            // connection is healthy
+            await checkDailyXuxaReset(client);
         }
     } catch (err) {
-        console.warn("Aviso: client.getState() falhou (provável mudança no WA Web). O bot não será reiniciado forçadamente para evitar loop de quedas.");
+        console.warn("Aviso na verificação de rotina/xuxa reset:", err.message);
     }
-}, 60 * 1000);
+}, 30 * 1000);
 
 // Impede que erros não tratados do puppeteer/whatsapp-web matem o processo
 process.on('unhandledRejection', (reason) => {

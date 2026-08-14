@@ -24,7 +24,8 @@ const comandos = [
  * @returns {Promise<boolean>}
  */
 async function handleBotCommands(message) {
-    const text = message.body.toLowerCase();
+    const text = message.body.toLowerCase().trim();
+
     if (!text.startsWith('#bot') && text !== '#help' && text !== '#enxug') return false;
 
     if (text === '#enxug') {

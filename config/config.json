@@ -1,12 +1,21 @@
 {
   "newsletter": {
     "authorId": "231790962819089@lid",
+    "sourceGroups": [
+      "120363417435454821@g.us",
+      "231790962819089@lid",
+      "5513996911070@c.us"
+    ],
     "chatGroups": [
       "120363253948555200@g.us",
       "120363420869794377@g.us",
       "5511998810475-1495042770@g.us"
-    ]
+    ],
+    "maxAgeMinutes": 15,
+    "startHour": 5,
+    "endHour": 14
   },
+  "xuxaGroup": "5511998848997-1604500469@g.us",
   "aniversariantes": [
     { "nome": "Luiz", "data": "27/01" },
     { "nome": "Pedrin", "data": "08/02" },

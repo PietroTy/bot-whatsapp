@@ -4,3 +4,4 @@
 node_modules/
 .env
 start.bat
+handlers/assets/tmp/
