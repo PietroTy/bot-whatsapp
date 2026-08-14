@@ -77,7 +77,16 @@ async function fetchGamerPowerGames() {
                 const dateB = new Date((b.published_date || '').replace(' ', 'T')).getTime() || b.id || 0;
                 return dateB - dateA;
             });
-        return pcGames.slice(0, 5).map(g => ({
+        const now = new Date();
+        const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+        const gamesAddedToday = pcGames.filter(g => {
+            const pubTime = new Date((g.published_date || '').replace(' ', 'T')).getTime();
+            return pubTime && (now.getTime() - pubTime) <= ONE_DAY_MS;
+        });
+
+        const countToTake = gamesAddedToday.length > 5 ? gamesAddedToday.length : 5;
+
+        return pcGames.slice(0, countToTake).map(g => ({
             title: g.title ? g.title.replace(/\s*Giveaway$/i, '').trim() : 'Jogo Grátis',
             platforms: g.platforms || 'PC',
             description: g.description ? g.description.replace(/[\r\n]+/g, ' ').trim() : ''
