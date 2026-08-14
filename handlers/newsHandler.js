@@ -388,6 +388,29 @@ async function fetchLatestYoutubeVideo(channelId, apiKey) {
     }
 }
 
+function cleanRepetitiveLoops(text) {
+    if (!text || typeof text !== 'string') return text;
+    const lines = text.split('\n');
+    const cleaned = [];
+    let lastLine = '';
+    let repeatCount = 0;
+
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed && trimmed === lastLine) {
+            repeatCount++;
+            if (repeatCount <= 1) {
+                cleaned.push(line);
+            }
+        } else {
+            lastLine = trimmed;
+            repeatCount = 1;
+            cleaned.push(line);
+        }
+    }
+    return cleaned.join('\n');
+}
+
 async function processarParteIA(prompt, parteIndex) {
     let tentativas = 0;
     const maxTentativas = 3;
@@ -398,7 +421,7 @@ async function processarParteIA(prompt, parteIndex) {
             console.log(`Enviando Parte ${parteIndex + 1} para a IA (tentativa ${tentativas}/${maxTentativas})...`);
             const resultado = await perguntarIA(prompt);
             console.log(`Parte ${parteIndex + 1} processada com sucesso!`);
-            return resultado;
+            return cleanRepetitiveLoops(resultado);
         } catch (error) {
             console.error(`Erro ao processar Parte ${parteIndex + 1} (Tentativa ${tentativas}):`, error.message);
             if (tentativas < maxTentativas) {

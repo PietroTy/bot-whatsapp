@@ -31,6 +31,7 @@ async function perguntarIA(messages) {
             model: "sabiazinho-4",
             messages: messages,
             temperature: 0.1,
+            frequency_penalty: 0.3,
             max_tokens: 4096
         });
 
