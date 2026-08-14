@@ -72,7 +72,11 @@ async function fetchGamerPowerGames() {
                 const plat = (g.platforms || '').toLowerCase();
                 return !plat.includes('android') && !plat.includes('ios') && !plat.includes('mobile');
             })
-            .sort((a, b) => new Date(b.published_date || 0) - new Date(a.published_date || 0));
+            .sort((a, b) => {
+                const dateA = new Date((a.published_date || '').replace(' ', 'T')).getTime() || a.id || 0;
+                const dateB = new Date((b.published_date || '').replace(' ', 'T')).getTime() || b.id || 0;
+                return dateB - dateA;
+            });
         return pcGames.slice(0, 5).map(g => ({
             title: g.title ? g.title.replace(/\s*Giveaway$/i, '').trim() : 'Jogo Grátis',
             platforms: g.platforms || 'PC',
