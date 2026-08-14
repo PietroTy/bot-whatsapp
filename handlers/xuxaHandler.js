@@ -22,7 +22,7 @@ const THEMES = [
     "Esportes ou Atletas",
     "Vilões de Filmes ou Desenhos",
     "Frutas, Verduras ou Legumes",
-    "O Pietro é... (Adjetivos ou Qualidades)",
+    "O Pietro é...",
     "Tema Livre (Qualquer bosta)"
 ];
 
@@ -115,12 +115,12 @@ A letra da rodada é "${letra}".
 O tema é "${tema}".
 A palavra enviada é "${palavra}".
 
-Avalie com bom senso (aceite gírias populares, nomes em inglês, cidades, países, marcas e acentuações):
+Avalie com bom senso (aceite adjetivos positivos ou pejorativos/xingamentos, gírias populares, nomes em inglês, cidades, países, marcas e acentuações):
 1. A palavra ou expressão "${palavra}" começa com a letra "${letra}" (ou sua forma acentuada Á, É, Í, Ó, Ú)?
-2. A palavra pertence ou tem relação lógica com o tema "${tema}"?
+2. A palavra pertence ou tem relação lógica com o tema "${tema}"? (No caso do tema "O Pietro é...", qualquer adjetivo, característica, xingamento ou qualidade é 100% VÁLIDO).
 
 Responda APENAS "SIM" se ambas as condições forem verdadeiras.
-Responda APENAS "NAO" se for uma palavra totalmente sem sentido, de tema totalmente diferente, ou que comece com outra letra.`;
+Responda APENAS "NAO" se for uma palavra totalmente sem sentido ou que comece com outra letra.`;
 
     try {
         const resposta = await perguntarIA([{ role: "user", content: prompt }]);
