@@ -63,18 +63,17 @@ function incrementEditionNumber(messageId) {
     return newEdition;
 }
 
-async function fetchEpicFreeGames() {
-    const url = "https://store-site-backend-static.ak.epicgames.com/freeGamesPromotions?locale=pt-BR&country=BR&allowCountries=BR";
+async function fetchGamerPowerGames() {
     try {
-        const response = await axios.get(url);
-        const elements = response.data?.data?.Catalog?.searchStore?.elements || [];
-        const freeGames = elements.filter(game =>
-            game.price?.totalPrice?.discountPrice === 0 &&
-            game.categories?.some(category => category.path === 'freegames')
-        );
-        return freeGames.map(game => game.title);
+        const response = await axios.get("https://www.gamerpower.com/api/giveaways?type=game", { timeout: 8000 });
+        if (!response.data || !Array.isArray(response.data)) return [];
+        return response.data.slice(0, 5).map(g => ({
+            title: g.title ? g.title.replace(/\s*Giveaway$/i, '').trim() : 'Jogo Grátis',
+            platforms: g.platforms || 'PC',
+            description: g.description ? g.description.replace(/[\r\n]+/g, ' ').trim() : ''
+        }));
     } catch (error) {
-        console.error("Erro ao buscar jogos grátis na Epic Games:", error.message);
+        console.error("Erro ao buscar jogos grátis no GamerPower:", error.message);
         return [];
     }
 }
@@ -228,7 +227,7 @@ function splitViniMunews(textoCompleto) {
     return { introducao, secaoNoticias1, secaoNoticias2, secaoNoticias3 };
 }
 
-function getPromptParte1(textoIntroducao, editionNumber, previsaoTempo) {
+function getPromptParte1(textoIntroducao, editionNumber, previsaoTempo, listaCurtaJogos) {
     return `
 Você é um editor de jornal digital (PITMUNEWS) com foco em design limpo e consistência. Sua tarefa é criar a **PARTE INTRODUTÓRIA** do jornal.
 
@@ -260,6 +259,8 @@ ${textoIntroducao}
     -   \`⏳ Dia do Ano:\` [Extraia do texto de origem]
     -   \`🌘 Fase da Lua:\` [Extraia a fase e a visibilidade]
     -   \`☀ Previsão do Tempo:\` ${previsaoTempo}
+    -   \`🎮 Jogos Grátis do Dia:\`
+${listaCurtaJogos}
     -   \`🎂 Aniversário de Famosos:\` [Escolha de 3 a 5 dos aniversariantes mais conhecidos e relevantes para o público brasileiro da seção "🎂 FAMOSOS ANIVERSARIANTES" no texto de origem (remova as bandeiras de país/emojis e reordene a idade em formato de parênteses se necessário, mantendo o padrão Nome (idade) - descrição. Exemplo: Alesso (35 anos) - DJ Produtor Musical)]
     -   \`🪐 Horóscopo:\` [Resuma a previsão do signo em no máximo duas frases curtas]
 
@@ -295,7 +296,7 @@ ${textoNoticias1}
 `;
 }
 
-function getPromptParte3(textoNoticias2, jogosGratis) {
+function getPromptParte3(textoNoticias2, listaDetalhadaJogos) {
     return `
 Você é um editor de jornal digital (PITMUNEWS) que segue regras de formatação de maneira precisa. Sua tarefa é criar a parte de **TECNOLOGIA, SAÚDE E GAMES** do jornal.
 
@@ -311,8 +312,10 @@ Você é um editor de jornal digital (PITMUNEWS) que segue regras de formataçã
   🧪 TECNOLOGIA & CIÊNCIA 🧪
   🎮 GAMES 🎮
 
-- Na seção GAMES, ao final da lista de manchetes, adicione esta linha:
-🎁 Grátis na Epic: ${jogosGratis}
+- Na seção GAMES, ao final da lista de manchetes, adicione a seção de jogos grátis da semana:
+
+🎁 JOGOS GRÁTIS DA SEMANA:
+${listaDetalhadaJogos}
 
 **TEXTO ORIGINAL:**
 \`\`\`
@@ -404,15 +407,18 @@ async function handleAutomaticNews(message, client) {
 
         const editionNumber = incrementEditionNumber(getMessageId(message));
 
-        const [freeGames, weather] = await Promise.all([
-            fetchEpicFreeGames(),
+        const [freeGamesList, weather] = await Promise.all([
+            fetchGamerPowerGames(),
             fetchWeather()
         ]);
 
-        let freeGamesText = "Nenhum jogo grátis encontrado hoje.";
-        if (freeGames.length > 0) {
-            freeGamesText = freeGames.join(' | ');
-        }
+        const listaCurtaJogos = freeGamesList.length > 0 
+            ? freeGamesList.map(g => `   - ${g.title} - ${g.platforms}`).join('\n')
+            : '   - Nenhum jogo grátis novo hoje.';
+
+        const listaDetalhadaJogos = freeGamesList.length > 0
+            ? freeGamesList.map(g => `🎮 ${g.title} (${g.platforms}): ${g.description}`).join('\n')
+            : '🎮 Nenhum jogo grátis novo hoje.';
 
         const channelId = 'UCLzb8VJaApoEZ6Bbmmq-oEA';
         const apiKey = process.env.YT_API_KEY;
@@ -422,9 +428,9 @@ async function handleAutomaticNews(message, client) {
             : 'Não foi possível carregar o vídeo do Mestre hoje.\n';
 
         const indicadores = await fetchEconomicIndicators();
-        const prompt1 = getPromptParte1(partes.introducao, editionNumber, weather);
+        const prompt1 = getPromptParte1(partes.introducao, editionNumber, weather, listaCurtaJogos);
         const prompt2 = getPromptParte2(partes.secaoNoticias1);
-        const prompt3 = getPromptParte3(partes.secaoNoticias2, freeGamesText);
+        const prompt3 = getPromptParte3(partes.secaoNoticias2, listaDetalhadaJogos);
         const prompt4 = getPromptParte4(partes.secaoNoticias3, indicadores);
 
         const systemMessage = { role: "system", content: "Você é um assistente de redação de jornal automatizado, focado em seguir instruções precisamente para criar seções de um jornal." };
