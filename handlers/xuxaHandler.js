@@ -22,6 +22,7 @@ const THEMES = [
     "Esportes ou Atletas",
     "Vilões de Filmes ou Desenhos",
     "Frutas, Verduras ou Legumes",
+    "Minha sogra é...",
     "Tema Livre (Qualquer bosta)"
 ];
 
