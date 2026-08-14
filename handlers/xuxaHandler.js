@@ -232,9 +232,9 @@ async function checkDailyXuxaReset(client) {
     const todayStr = getTodayDateString();
 
     const state = loadGameState();
-    if (hours === 0 && minutes === 1 && state.lastResetDate !== todayStr) {
-        console.log(`[Xuxa Game] Executando reset diário automático das 00:01 (${todayStr})...`);
-        await executeRoundResetAndBans(client, "Reset Diário 00:01 AM");
+    if (hours === 0 && (minutes === 10 || minutes === 1) && state.lastResetDate !== todayStr) {
+        console.log(`[Xuxa Game] Executando reset diário automático (${todayStr})...`);
+        await executeRoundResetAndBans(client, "Reset Diário 00:10 AM");
     }
 }
 
