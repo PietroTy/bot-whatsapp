@@ -67,10 +67,12 @@ async function fetchGamerPowerGames() {
     try {
         const response = await axios.get("https://www.gamerpower.com/api/giveaways?platform=pc&type=game", { timeout: 8000 });
         if (!response.data || !Array.isArray(response.data)) return [];
-        const pcGames = response.data.filter(g => {
-            const plat = (g.platforms || '').toLowerCase();
-            return !plat.includes('android') && !plat.includes('ios') && !plat.includes('mobile');
-        });
+        const pcGames = response.data
+            .filter(g => {
+                const plat = (g.platforms || '').toLowerCase();
+                return !plat.includes('android') && !plat.includes('ios') && !plat.includes('mobile');
+            })
+            .sort((a, b) => new Date(b.published_date || 0) - new Date(a.published_date || 0));
         return pcGames.slice(0, 5).map(g => ({
             title: g.title ? g.title.replace(/\s*Giveaway$/i, '').trim() : 'Jogo Grátis',
             platforms: g.platforms || 'PC',
