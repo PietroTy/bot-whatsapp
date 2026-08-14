@@ -65,9 +65,13 @@ function incrementEditionNumber(messageId) {
 
 async function fetchGamerPowerGames() {
     try {
-        const response = await axios.get("https://www.gamerpower.com/api/giveaways?type=game", { timeout: 8000 });
+        const response = await axios.get("https://www.gamerpower.com/api/giveaways?platform=pc&type=game", { timeout: 8000 });
         if (!response.data || !Array.isArray(response.data)) return [];
-        return response.data.slice(0, 5).map(g => ({
+        const pcGames = response.data.filter(g => {
+            const plat = (g.platforms || '').toLowerCase();
+            return !plat.includes('android') && !plat.includes('ios') && !plat.includes('mobile');
+        });
+        return pcGames.slice(0, 5).map(g => ({
             title: g.title ? g.title.replace(/\s*Giveaway$/i, '').trim() : 'Jogo Grátis',
             platforms: g.platforms || 'PC',
             description: g.description ? g.description.replace(/[\r\n]+/g, ' ').trim() : ''
