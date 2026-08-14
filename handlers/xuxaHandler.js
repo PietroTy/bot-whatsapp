@@ -109,15 +109,17 @@ async function banUser(chat, client, userId, reason) {
 }
 
 async function validarComIA(letra, palavra, tema) {
-    const prompt = `Você é o juiz do jogo "ABCdário da Xuxa".
-A letra esperada é "${letra}".
-O tema ativo é "${tema}".
-A palavra/frase enviada foi "${palavra}".
+    const prompt = `Você é o juiz do jogo de palavras "ABCdário da Xuxa".
+A letra da rodada é "${letra}".
+O tema é "${tema}".
+A palavra enviada é "${palavra}".
 
-Responda APENAS a palavra "SIM" se a palavra/frase for uma resposta válida que se encaixe no tema e comece (ou tenha como palavra principal inicial) a letra "${letra}".
-Responda APENAS a palavra "NAO" caso a palavra não tenha relação com o tema ou não comece com a letra "${letra}".
+Avalie com bom senso (aceite gírias populares, nomes em inglês, cidades, países, marcas e acentuações):
+1. A palavra ou expressão "${palavra}" começa com a letra "${letra}" (ou sua forma acentuada Á, É, Í, Ó, Ú)?
+2. A palavra pertence ou tem relação lógica com o tema "${tema}"?
 
-Resposta (SIM ou NAO):`;
+Responda APENAS "SIM" se ambas as condições forem verdadeiras.
+Responda APENAS "NAO" se for uma palavra totalmente sem sentido, de tema totalmente diferente, ou que comece com outra letra.`;
 
     try {
         const resposta = await perguntarIA([{ role: "user", content: prompt }]);
