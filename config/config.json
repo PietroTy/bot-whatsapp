@@ -18,38 +18,53 @@
   },
   "xuxaGroup": "5511998848997-1604500469@g.us",
   "gruposAniversarios": {
+    "120363253948555200@g.us": {
+      "nomeGrupo": "Laranja Cremosa",
+      "mensagem": "🎂🎉 FELIZ ANIVERSÁRIO, {nomes}! 🎉🎂\n\nUm beijão na vossa teta esquerda, muita saúde, dinheiro, falta doq fazer, e muitas felicidades!!!!\n\n",
+      "membros": [
+        { "nome": "Luiz", "data": "27/01" },
+        { "nome": "Dani", "data": "03/03" },
+        { "nome": "Mel", "data": "13/04" },
+        { "nome": "Evelyn", "data": "08/06" },
+        { "nome": "Mary", "data": "21/06" },
+        { "nome": "Raissa", "data": "26/06" },
+        { "nome": "Gregorio", "data": "05/07" },
+        { "nome": "Pietro", "data": "01/09" },
+        { "nome": "Kevin", "data": "22/09" },
+        { "nome": "Layzer", "data": "04/11" },
+        { "nome": "Rebs", "data": "24/11" },
+        { "nome": "Fernando", "data": "16/12" },
+        { "nome": "Rogréio", "data": "29/12" }
+      ]
+    },
     "5511998810475-1495042770@g.us": {
       "nomeGrupo": "T . D . A . P .",
       "mensagem": "🎂🎉 FELIZ ANIVERSÁRIO, {nomes}! 🎉🎂\n\nUm beijão na vossa teta esquerda, muita saúde, dinheiro, falta doq fazer, e muitas felicidades!!!!\n\n",
       "membros": [
-        { "nome": "Luiz", "data": "27/01" },
         { "nome": "Pedrin", "data": "08/02" },
         { "nome": "Liz", "data": "09/02" },
-        { "nome": "Dani", "data": "03/03" },
         { "nome": "Roger", "data": "07/03" },
         { "nome": "Xivana", "data": "21/03" },
-        { "nome": "Mel", "data": "13/04" },
         { "nome": "Heitor", "data": "26/04" },
         { "nome": "Lidi", "data": "21/05" },
-        { "nome": "Evelyn", "data": "08/06" },
         { "nome": "Nic", "data": "08/06" },
         { "nome": "Felipinho", "data": "09/06" },
         { "nome": "Xumas", "data": "19/06" },
-        { "nome": "Mary", "data": "21/06" },
-        { "nome": "Raissa", "data": "26/06" },
-        { "nome": "Gregorio", "data": "05/07" },
         { "nome": "Bia", "data": "13/07" },
         { "nome": "Arroz", "data": "12/08" },
         { "nome": "Pietro", "data": "01/09" },
         { "nome": "Vito", "data": "01/09" },
-        { "nome": "Kevin", "data": "22/09" },
-        { "nome": "Layzer", "data": "04/11" },
-        { "nome": "Rebs", "data": "24/11" },
         { "nome": "Casari", "data": "27/11" },
-        { "nome": "Fernando", "data": "16/12" },
         { "nome": "SrQuirino", "data": "19/12" },
         { "nome": "Marcola", "data": "28/12" },
         { "nome": "Rogréio", "data": "29/12" }
+      ]
+    },
+    "120363420869794377@g.us": {
+      "nomeGrupo": "Jor & Now",
+      "mensagem": "🎂🎉 FELIZ ANIVERSÁRIO, {nomes}! 🎉🎂\n\nUm beijão na vossa teta esquerda, muita saúde, dinheiro, falta doq fazer, e muitas felicidades!!!!\n\n",
+      "membros": [
+        { "nome": "Pietro", "data": "01/09" }
       ]
     },
     "5511912877962-1630622233@g.us": {
@@ -59,6 +74,7 @@
         { "nome": "Iago", "data": "01/03" },
         { "nome": "Bruno", "data": "25/04" },
         { "nome": "Anthony", "data": "27/08" },
+        { "nome": "Pietro", "data": "01/09" },
         { "nome": "Dimitri", "data": "11/09" },
         { "nome": "Guilherme", "data": "10/10" },
         { "nome": "Gustavo", "data": "20/11" }
