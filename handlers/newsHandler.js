@@ -100,7 +100,9 @@ async function fetchEconomicIndicators() {
     }
 }
 
-function checkAniversariantes(textoDoJornal) {
+function checkAniversariantesDoGrupo(textoDoJornal, listaMembros) {
+    if (!Array.isArray(listaMembros) || listaMembros.length === 0) return [];
+
     const regexData = /(\d{1,2}) de (\w+) de (\d{4})/;
     const match = textoDoJornal.match(regexData);
     if (!match) return [];
@@ -116,7 +118,7 @@ function checkAniversariantes(textoDoJornal) {
     const mesFormatado = String(mes).padStart(2, '0');
     const dataAtualFormatada = `${diaFormatado}/${mesFormatado}`;
 
-    return ANIVERSARIANTES_ESPECIAIS
+    return listaMembros
         .filter(p => p.data === dataAtualFormatada)
         .map(p => p.nome);
 }
@@ -393,14 +395,6 @@ async function handleAutomaticNews(message, client) {
         console.log("Iniciando processamento do VINIMUNEWS...");
         const textoCompletoDoEditor = message.body;
 
-        let mensagemAniversario = '';
-        const aniversariantesDoDia = checkAniversariantes(textoCompletoDoEditor);
-        if (aniversariantesDoDia.length > 0) {
-            const nomes = aniversariantesDoDia.join(' e ');
-            mensagemAniversario = `🎂🎉 FELIZ ANIVERSÁRIO, ${nomes}! 🎉🎂\n\nUm beijão na vossa teta esquerda, muita saúde, dinheiro, falta doq fazer, e muitas felicidades!!!!\n\n`;
-            console.log(`Aniversário detectado para: ${nomes}`);
-        }
-
         const partes = splitViniMunews(textoCompletoDoEditor);
         if (!partes) {
             console.error("Falha ao processar: a estrutura do VINIMUNEWS não pôde ser reconhecida. Verifique os marcadores de seção.");
@@ -451,7 +445,7 @@ async function handleAutomaticNews(message, client) {
         console.log("Todas as partes recebidas da IA.");
 
         const jornalGerado = [
-            mensagemAniversario + resultadoParte1,
+            resultadoParte1,
             videoMsg,                              
             resultadoParte2,                       
             resultadoParte3,                       
@@ -531,7 +525,22 @@ async function handleAutomaticNews(message, client) {
         if (targetGroups.length > 0) {
             console.log(`Enviando PITMUNEWS Nº ${editionNumber} para ${targetGroups.length} grupo(s).`);
             for (const group of targetGroups) {
-                await client.sendMessage(group.id._serialized, jornalCompleto);
+                const groupId = group.id._serialized;
+                let finalJornalParaGrupo = jornalGerado;
+
+                // Checa se este grupo possui aniversariantes e mensagem específica
+                const groupConfig = CONFIG.gruposAniversarios?.[groupId];
+                if (groupConfig && Array.isArray(groupConfig.membros)) {
+                    const aniversariantesDoDia = checkAniversariantesDoGrupo(textoCompletoDoEditor, groupConfig.membros);
+                    if (aniversariantesDoDia.length > 0) {
+                        const nomes = aniversariantesDoDia.join(' e ');
+                        const customMsg = groupConfig.mensagem ? groupConfig.mensagem.replace('{nomes}', nomes) : `🎂🎉 FELIZ ANIVERSÁRIO, ${nomes}! 🎉🎂\n\n`;
+                        finalJornalParaGrupo = customMsg + jornalGerado;
+                        console.log(`Aniversário detectado no grupo "${groupConfig.nomeGrupo || groupId}" para: ${nomes}`);
+                    }
+                }
+
+                await client.sendMessage(groupId, finalJornalParaGrupo);
             }
             const stickerPath = path.join(__dirname, 'assets/Newsletter.webp');
             if (fs.existsSync(stickerPath)) {
