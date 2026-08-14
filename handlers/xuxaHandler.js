@@ -171,27 +171,33 @@ async function executeRoundResetAndBans(client, reasonLabel) {
         }
 
         const playedUserIds = Object.keys(state.userCounts || {});
+        const isFirstRun = !state.gameStarted || playedUserIds.length === 0;
         const unplayedNonAdmins = [];
 
         const botId = client?.info?.wid?._serialized;
 
-        for (const p of chat.participants) {
-            const pid = p.id._serialized;
-            const isAdmin = p.isAdmin || p.isSuperAdmin;
-            const isBot = botId && pid === botId;
+        // Só realiza varredura de banimento se a rodada anterior estava ativa e teve participantes
+        if (!isFirstRun) {
+            for (const p of chat.participants) {
+                const pid = p.id._serialized;
+                const isAdmin = p.isAdmin || p.isSuperAdmin;
+                const isBot = botId && pid === botId;
 
-            if (!isAdmin && !isBot && !playedUserIds.includes(pid)) {
-                unplayedNonAdmins.push(pid);
+                if (!isAdmin && !isBot && !playedUserIds.includes(pid)) {
+                    unplayedNonAdmins.push(pid);
+                }
             }
-        }
 
-        if (unplayedNonAdmins.length > 0) {
-            console.log(`[Xuxa Game] Banindo silenciosamente ${unplayedNonAdmins.length} membro(s) não participantes...`);
-            try {
-                await chat.removeParticipants(unplayedNonAdmins);
-            } catch (err) {
-                console.error("Erro ao banir não participantes em lote:", err.message);
+            if (unplayedNonAdmins.length > 0) {
+                console.log(`[Xuxa Game] Banindo silenciosamente ${unplayedNonAdmins.length} membro(s) não participantes...`);
+                try {
+                    await chat.removeParticipants(unplayedNonAdmins);
+                } catch (err) {
+                    console.error("Erro ao banir não participantes em lote:", err.message);
+                }
             }
+        } else {
+            console.log("[Xuxa Game] Início de rodada/primeira execução. Nenhum banimento por inatividade aplicado.");
         }
 
         const newTheme = getRandomTheme(state.theme);
