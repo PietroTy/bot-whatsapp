@@ -136,12 +136,14 @@ A letra da rodada é "${letra}".
 O tema é "${tema}".
 A palavra enviada é "${palavra}".
 
-Avalie com bom senso (aceite adjetivos positivos ou pejorativos/xingamentos, gírias populares, nomes em inglês, cidades, países, marcas e acentuações):
+Avalie com bom senso e firmeza:
 1. A palavra ou expressão "${palavra}" começa com a letra "${letra}" (ou sua forma acentuada Á, É, Í, Ó, Ú)?
-2. A palavra pertence ou tem relação lógica com o tema "${tema}"? (No caso do tema "O Pietro é...", qualquer adjetivo, característica, xingamento ou qualidade é 100% VÁLIDO).
+2. A palavra pertence ou tem relação direta e lógica com o tema "${tema}"?
+   - Para temas de "Objetos", a palavra DEVE ser um objeto físico/concreto do mundo real (ex: Vassoura, Vaso, Vela, Ventilador). Conceitos abstratos ou gírias abstratas (como "vácuo") NÃO são objetos físicos e devem ser REPROVADOS ("NAO").
+   - No caso do tema "O Pietro é...", qualquer adjetivo, característica, xingamento ou qualidade é 100% VÁLIDO.
 
-Responda APENAS "SIM" se ambas as condições forem verdadeiras.
-Responda APENAS "NAO" se for uma palavra totalmente sem sentido ou que comece com outra letra.`;
+Responda APENAS "SIM" se for uma resposta válida para o tema e letra.
+Responda APENAS "NAO" se for inválida, fora do tema, um conceito abstrato em tema de objetos, ou que comece com outra letra.`;
 
     try {
         const resposta = await perguntarIA([{ role: "user", content: prompt }]);
@@ -287,16 +289,10 @@ async function handleXuxaGameMessage(message, client) {
         // Tenta dar match exato no formato "<Letra> de <Palavra>"
         const match = firstLine.match(/^([a-zà-ÿ])\s+de\s+(.+)$/i);
 
+        // Durante o jogo ativo, QUALQUER mensagem de participante que não siga o formato "X de Y" resulta em BAN!
         if (!match) {
-            // Verifica se é uma tentativa de jogada inválida (ex: "Volts", "V-vacuo", "V: vacuo", "Vacuo" ou começa com a letra esperada/padrão)
-            const startsWithExpected = firstLine.toUpperCase().startsWith(expectedLetter);
-            const isLetterPattern = /^([a-zÀ-ÿ])(\s*[:\-\=]|\s+[a-zÀ-ÿ]+)/i.test(firstLine) || /^letra\s+[a-z]/i.test(firstLine);
-
-            if (startsWithExpected || isLetterPattern) {
-                await banUser(chat, client, senderId, 'Não usou o formato correto "X de Y" (ex: "A de Amor").');
-                return true;
-            }
-            return false;
+            await banUser(chat, client, senderId, 'Conversou durante o jogo ou não usou o formato "X de Y" (ex: "A de Amor").');
+            return true;
         }
 
         const inputLetter = match[1].toUpperCase();
