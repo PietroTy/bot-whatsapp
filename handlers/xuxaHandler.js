@@ -193,8 +193,32 @@ async function executeDailyReset(client) {
             return;
         }
 
-        // Ao virar o dia (00:01 AM), apenas reinicia a rodada com novo tema sem banir ninguém por inatividade
-        console.log("[Xuxa Game] Reset diário das 00:01 AM. Reiniciando o jogo sem aplicar banimentos.");
+        const playedUserIds = state.userCounts || {};
+        const wasGameActiveYesterday = state.gameStarted && !state.gameCompletedToday && Object.keys(playedUserIds).length > 0;
+        const botId = client?.info?.wid?._serialized;
+
+        // Se o jogo de ontem NÃO terminou no Z (ficou incompleto às 00:01), bane quem não participou ontem
+        if (wasGameActiveYesterday) {
+            const unplayedNonAdmins = [];
+            for (const p of chat.participants) {
+                const isAdmin = p.isAdmin || p.isSuperAdmin;
+                const isBot = botId && (p.id._serialized === botId || extractRawNumber(p.id._serialized) === extractRawNumber(botId));
+                if (!isAdmin && !isBot && !isUserPlayed(p, playedUserIds)) {
+                    unplayedNonAdmins.push(p.id._serialized);
+                }
+            }
+
+            if (unplayedNonAdmins.length > 0) {
+                console.log(`[Xuxa Game] Reset 00:01. Banindo silenciosamente ${unplayedNonAdmins.length} membro(s) não participantes do dia anterior...`);
+                try {
+                    await chat.removeParticipants(unplayedNonAdmins);
+                } catch (err) {
+                    console.error("Erro ao banir não participantes no reset 00:01:", err.message);
+                }
+            }
+        } else {
+            console.log("[Xuxa Game] O jogo anterior foi concluído no Z ou era primeira execução. Nenhum banimento aplicado no reset das 00:01.");
+        }
 
         // Sorteia novo tema e reseta para a nova rodada
         const newTheme = getRandomTheme(state.theme);
