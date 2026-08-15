@@ -179,7 +179,10 @@ setInterval(async () => {
             await checkDailyXuxaReset(client);
         }
     } catch (err) {
-        console.warn("Aviso na verificação de rotina/xuxa reset:", err.message);
+        const msg = err?.message || "";
+        if (!msg.includes("detached Frame") && !msg.includes("Target closed") && !msg.includes("Session closed") && !msg.includes("Execution context was destroyed")) {
+            console.warn("Aviso na verificação de rotina/xuxa reset:", msg);
+        }
     }
 }, 30 * 1000);
 

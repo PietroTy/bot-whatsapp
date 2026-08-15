@@ -134,16 +134,16 @@ async function validarComIA(letra, palavra, tema) {
     const prompt = `Você é o juiz do jogo de palavras "ABCdário da Xuxa".
 A letra da rodada é "${letra}".
 O tema é "${tema}".
-A palavra enviada é "${palavra}".
+A palavra/expressão enviada é "${palavra}".
 
-Avalie com bom senso e firmeza:
-1. A palavra ou expressão "${palavra}" começa com a letra "${letra}" (ou sua forma acentuada Á, É, Í, Ó, Ú)?
-2. A palavra pertence ou tem relação direta e lógica com o tema "${tema}"?
-   - Para temas de "Objetos", a palavra DEVE ser um objeto físico/concreto do mundo real (ex: Vassoura, Vaso, Vela, Ventilador). Conceitos abstratos ou gírias abstratas (como "vácuo") NÃO são objetos físicos e devem ser REPROVADOS ("NAO").
-   - No caso do tema "O Pietro é...", qualquer adjetivo, característica, xingamento ou qualidade é 100% VÁLIDO.
+Diretrizes de avaliação:
+1. Verifique se a palavra ou expressão "${palavra}" começa com a letra "${letra}" (ignorando maiúsculas/minúsculas e acentos como Á, É, Í, Ó, Ú).
+2. Verifique a relação com o tema "${tema}":
+   - Para "Esportes ou Atletas": Aceite QUALQUER esporte, modalidade, arte marcial, jogo ou disciplina esportiva (ex: Iatismo, Kung Fu, Karatê, Esgrima, Luta Livre, Handebol, Natação, Rugby, Tênis, etc.) E TAMBÉM primeiros nomes, sobrenomes, apelidos ou nomes completos de atletas, jogadores, treinadores ou personalidades do esporte (ex: Tatum, Jayson Tatum, Pelé, Marta, Dunga, Chris Paul, Messi, LeBron, etc.).
+   - Para "Objetos": A palavra DEVE ser um objeto físico/concreto do mundo real. Conceitos abstratos ou gírias (ex: "vácuo") devem ser REPROVADOS ("NAO").
+   - Para "O Pietro é...": Qualquer adjetivo, característica, xingamento ou qualidade é VÁLIDO.
 
-Responda APENAS "SIM" se for uma resposta válida para o tema e letra.
-Responda APENAS "NAO" se for inválida, fora do tema, um conceito abstrato em tema de objetos, ou que comece com outra letra.`;
+Responda EXATAMENTE "SIM" se for uma resposta válida para o tema e letra, ou "NAO" se for inválida. Responda apenas essa palavra.`;
 
     try {
         const resposta = await perguntarIA([{ role: "user", content: prompt }]);
@@ -157,16 +157,25 @@ Responda APENAS "NAO" se for inválida, fora do tema, um conceito abstrato em te
     }
 }
 
-async function gerarPalavraParaLetraA(tema) {
-    const prompt = `Escolha uma única palavra ou nome próprio muito conhecido que comece com a letra "A" e que pertença ao tema "${tema}".
-Responda APENAS com essa palavra ou expressão curta, sem frases longas nem pontuação.`;
-    try {
-        const resposta = await perguntarIA([{ role: "user", content: prompt }]);
-        const limpo = resposta.trim().replace(/^A\s+de\s+/i, '').replace(/[^a-zA-Zá-úÁ-Úà-ùÀ-Ùã-õÃ-Õâ-ûÂ-ÛçÇ0-9\s-]/g, '');
-        if (limpo && limpo.length > 0) return limpo;
-    } catch (e) {
-        console.error("Erro ao gerar palavra para letra A com IA:", e.message);
-    }
+function gerarPalavraParaLetraA(tema) {
+    const t = (tema || '').toLowerCase();
+
+    if (t.includes("esporte")) return "Atletismo";
+    if (t.includes("filme") || t.includes("série") || t.includes("desenho")) return "Avatar";
+    if (t.includes("comida") || t.includes("bebida") || t.includes("sobremesa")) return "Arroz";
+    if (t.includes("país") || t.includes("pais") || t.includes("cidade") || t.includes("capital")) return "Alemanha";
+    if (t.includes("animal") || t.includes("inseto") || t.includes("seres")) return "Águia";
+    if (t.includes("marca") || t.includes("empresa") || t.includes("produto")) return "Apple";
+    if (t.includes("famoso") || t.includes("celebridade") || t.includes("histórico")) return "Ayrton Senna";
+    if (t.includes("jogo") || t.includes("game")) return "Among Us";
+    if (t.includes("objeto")) return "Abajur";
+    if (t.includes("profissão") || t.includes("profissao") || t.includes("estudo")) return "Advogado";
+    if (t.includes("corpo") || t.includes("anatomia")) return "Abdômen";
+    if (t.includes("música") || t.includes("musica") || t.includes("banda") || t.includes("cantor")) return "Anitta";
+    if (t.includes("vilão") || t.includes("vilao")) return "Apocalipse";
+    if (t.includes("fruta") || t.includes("verdura") || t.includes("legume")) return "Abacaxi";
+    if (t.includes("pietro")) return "Amoroso";
+
     return "Amor";
 }
 
@@ -283,11 +292,19 @@ async function handleXuxaGameMessage(message, client) {
         const chat = await message.getChat();
         const expectedLetter = state.currentLetter.toUpperCase();
 
-        // Pega a primeira linha da mensagem
-        const firstLine = body.split('\n')[0].trim();
-
-        // Tenta dar match exato no formato "<Letra> de <Palavra>"
-        const match = firstLine.match(/^([a-zà-ÿ])\s+de\s+(.+)$/i);
+        // Procura entre as linhas da mensagem pela linha no formato "<Letra> de <Palavra>"
+        const lines = body.split('\n').map(l => l.trim()).filter(Boolean);
+        let match = null;
+        for (const line of lines) {
+            const m = line.match(/^([a-zà-ÿ])\s+de\s+(.+)$/i);
+            if (m) {
+                if (m[1].toUpperCase() === expectedLetter) {
+                    match = m;
+                    break;
+                }
+                if (!match) match = m;
+            }
+        }
 
         // Durante o jogo ativo, QUALQUER mensagem de participante que não siga o formato "X de Y" resulta em BAN!
         if (!match) {
