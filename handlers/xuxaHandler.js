@@ -40,14 +40,27 @@ function extractRawNumber(idStr) {
 }
 
 function isUserPlayed(participant, userCounts) {
-    if (!participant || !participant.id) return false;
-    const pId = participant.id._serialized || participant.id;
-    const pNum = extractRawNumber(pId);
+    if (!participant) return false;
+    if (!userCounts || Object.keys(userCounts).length === 0) return false;
 
-    for (const key of Object.keys(userCounts || {})) {
-        if (key === pId) return true;
-        const keyNum = extractRawNumber(key);
-        if (keyNum && pNum && keyNum === pNum) return true;
+    const idsToCheck = new Set();
+
+    if (participant.id) {
+        if (participant.id._serialized) idsToCheck.add(participant.id._serialized);
+        if (participant.id.user) idsToCheck.add(participant.id.user);
+        const raw = extractRawNumber(participant.id._serialized);
+        if (raw) idsToCheck.add(raw);
+    }
+
+    if (participant.lid) {
+        if (participant.lid._serialized) idsToCheck.add(participant.lid._serialized);
+        if (participant.lid.user) idsToCheck.add(participant.lid.user);
+        const rawLid = extractRawNumber(participant.lid._serialized);
+        if (rawLid) idsToCheck.add(rawLid);
+    }
+
+    for (const id of idsToCheck) {
+        if (id && userCounts[id]) return true;
     }
     return false;
 }
@@ -105,7 +118,11 @@ function getSenderId(message) {
 async function isUserAdmin(chat, userId) {
     if (!chat || !chat.participants) return false;
     const userNum = extractRawNumber(userId);
-    const participant = chat.participants.find(p => p.id._serialized === userId || extractRawNumber(p.id._serialized) === userNum);
+    const participant = chat.participants.find(p => {
+        if (p.id._serialized === userId || extractRawNumber(p.id._serialized) === userNum) return true;
+        if (p.lid && (p.lid._serialized === userId || extractRawNumber(p.lid._serialized) === userNum)) return true;
+        return false;
+    });
     return participant ? (participant.isAdmin || participant.isSuperAdmin) : false;
 }
 
@@ -332,11 +349,24 @@ async function handleXuxaGameMessage(message, client) {
             return true;
         }
 
-        // Registra a jogada do usuário no mapa (usando tanto o senderId quanto o número bruto)
+        // Registra a jogada do usuário no mapa com todos os identificadores possíveis (senderId, phone, LID)
         state.userCounts[senderId] = (state.userCounts[senderId] || 0) + 1;
         const rawSenderNum = extractRawNumber(senderId);
         if (rawSenderNum) {
             state.userCounts[rawSenderNum] = (state.userCounts[rawSenderNum] || 0) + 1;
+        }
+
+        try {
+            const contact = await message.getContact();
+            if (contact) {
+                if (contact.id?._serialized) state.userCounts[contact.id._serialized] = (state.userCounts[contact.id._serialized] || 0) + 1;
+                if (contact.id?.user) state.userCounts[contact.id.user] = (state.userCounts[contact.id.user] || 0) + 1;
+                if (contact.number) state.userCounts[contact.number] = (state.userCounts[contact.number] || 0) + 1;
+                if (contact.lid?._serialized) state.userCounts[contact.lid._serialized] = (state.userCounts[contact.lid._serialized] || 0) + 1;
+                if (contact.lid?.user) state.userCounts[contact.lid.user] = (state.userCounts[contact.lid.user] || 0) + 1;
+            }
+        } catch (e) {
+            // ignore contact fetch errors
         }
 
         const currentIndex = ALPHABET.indexOf(expectedLetter);
