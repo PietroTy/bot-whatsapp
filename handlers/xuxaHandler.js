@@ -202,26 +202,32 @@ async function banUser(chat, client, userId, reason) {
 }
 
 async function validarComIA(letra, palavra, tema) {
-    const prompt = `Você é o juiz do jogo de palavras "ABCdário da Xuxa".
+    const prompt = `Você é o juiz supremo e generoso do jogo de palavras "ABCdário da Xuxa".
 A letra da rodada é "${letra}".
 O tema é "${tema}".
-A palavra/expressão enviada é "${palavra}".
+A palavra/expressão enviada pelo jogador é "${palavra}".
 
-REGRAS DE AVALIAÇÃO:
+REGRAS OBRIGATÓRIAS DE AVALIAÇÃO:
 
 1. VERIFICAÇÃO DA LETRA INICIAL:
    - A palavra "${palavra}" (ou a primeira palavra relevante da expressão) DEVE começar com a letra "${letra}".
-   - Ignore acentos (Á, É, Í, Ó, Ú, À, Ã, Â, Ç, etc.). Exemplo: Para letra "A", "Águia", "Abacaxi", "Azeitona" são VÁLIDAS.
+   - Ignore acentos e cedilha (Á, É, Í, Ó, Ú, À, Ã, Â, Ç, etc.). Exemplo: Para letra "A", "Águia", "Abacaxi", "Azeitona" são VÁLIDAS.
+   - Considere a grafia em PORTUGUÊS do Brasil! Nomes aportuguesados de cidades, países ou lugares (ex: Xangai, Zimbábue, Nova York, Pequim, etc.) começam com a letra inicial da palavra em português (ex: "Xangai" começa com "X" e é VÁLIDO!).
 
 2. VERIFICAÇÃO DO TEMA ("${tema}"):
-   Seja BASTANTE FLEXÍVEL, ABRANGENTE E GENEROSO. Não seja pedante ou estrito demais. Se o item tiver qualquer relação culinária, popular, científica ou cultural aceitável com o tema, APROVE.
+   Seja EXTREMAMENTE FLEXÍVEL, GENEROSO E ABRANGENTE. Não seja pedante nem estrito. Se o item tiver qualquer relação aceitável com o tema (mesmo que seja um município pequeno, termo regional, gíria ou homônimo com outro significado), APROVE!
 
-   Diretrizes específicas por tema:
+   Instruções detalhadas por tema:
+   - "Países, Cidades ou Capitais": ACEITE QUALQUER PAÍS, CIDADE, CAPITAL, ESTADO, MUNICÍPIO, VILA, DISTRITO OU REGIÃO DO BRASIL OU DO MUNDO.
+     • Aceite nomes aportuguesados (ex: Xangai, Pequim, Nova York, Londres, etc.).
+     • Aceite municípios brasileiros pequenos, médios ou grandes (ex: Xique-Xique, Xanxerê, Xaxim, Xambrê, Xapuri, Xangri-lá, Ipu, Oiti, Ubá, etc.).
+     • Se a palavra for o nome de um município ou cidade real (como Xique-Xique em BA, Xanxerê em SC, etc.), APROVE ("SIM"), mesmo que o nome também pertença a uma planta, cacto ou objeto.
+
    - "Frutas, Verduras ou Legumes": ACEITE QUALQUER ALIMENTO OU PLANTA COMESTÍVEL DE ORIGEM VEGETAL, incluindo:
-     • Frutas, frutos e frutos botânicos (ex: Abacaxi, Banana, Tomate, Melancia, Oiti, Pitanga, Pimentão, Pepino, Abóbora, etc.)
+     • Frutas, frutos e frutos botânicos (ex: Abacaxi, Banana, Tomate, Melancia, Oiti, Pitanga, Pimentão, Pepino, Abóbora, Xique-xique/Cacto comestível, etc.)
      • Verduras, folhosas e hortaliças (ex: Alface, Couve, Espinafre, Agrião, Rúcula, Repolho, etc.)
      • Legumes, vagens e leguminosas (ex: Feijão, Ervilha, Vagem, Lentilha, Grão-de-bico, Quiabo, etc.)
-     • Raízes, tubérculos, rizomas e bulbos (ex: Inhame, Mandioca, Batata, Cenoura, Rabanete, Beterraba, Cebola, Alho, Wasabi, Gengibre, Nabo, Mandioquinha, etc.)
+     • Raízes, tubérculos, rizomas e bulbos (ex: Inhame, Mandioca, Batata, Cenoura, Rabanete, Beterraba, Cebola, Alho, Wasabi, Gengibre, Nabo, Mandioquinha, Yam, etc.)
      • Ervas, temperos, especiarias e condimentos vegetais (ex: Hortelã, Coentro, Salsa, Manjericão, Alecrim, Louro, Orégano, etc.)
      • Flores comestíveis e vegetais florais (ex: Hibisco, Alcachofra, Brócolis, Couve-flor, etc.)
      • Cogumelos e fungos comestíveis (ex: Champignon, Shimeji, Shiitake, Cogumelo, etc.)
@@ -230,8 +236,6 @@ REGRAS DE AVALIAÇÃO:
    - "Comidas, Bebidas ou Sobremesas": ACEITE qualquer prato, refeição, alimento preparado, ingrediente, bebida alcoólica ou não alcoólica, sobremesa, doce, fruta, fast-food, guloseima ou marca de comida/bebida.
 
    - "Filmes, Séries ou Desenhos": ACEITE qualquer título de filme, série, novela, anime, desenho animado, franquia ou personagem principal de audiovisual em português ou inglês.
-
-   - "Países, Cidades ou Capitais": ACEITE países, cidades, capitais, estados, regiões, continentes, apelidos famosos de cidades ou gentílicos.
 
    - "Animais, Insetos ou Seres Vivos": ACEITE qualquer animal, inseto, ave, peixe, réptil, anfíbio, dinossauro, planta, fungo, bactéria, criatura mítica ou ser vivo.
 
@@ -256,6 +260,8 @@ REGRAS DE AVALIAÇÃO:
    - "O Pietro é...": Qualquer adjetivo, característica, qualidade ou adjetivação em português é VÁLIDA.
 
    - "Tema Livre (Qualquer bosta)": Qualquer palavra ou expressão real existente em português ou inglês é VÁLIDA.
+
+EM CASO DE DÚVIDA SE O LUGAR/CIDADE/ITEM EXISTE, SE COMEÇAR COM A LETRA CORRETA DA RODADA, RESPONDA "SIM". NÃO SEJA PEDANTE.
 
 Responda EXATAMENTE e APENAS uma palavra:
 "SIM" se a palavra for aceita.
