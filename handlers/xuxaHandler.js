@@ -26,7 +26,8 @@ const THEMES = [
     "Tema Livre (Qualquer bosta)"
 ];
 
-const ALPHABET = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'];
+const ALPHABET_ABC = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'];
+const ALPHABET_AEIOU = ['A', 'E', 'I', 'O', 'U'];
 
 function getTodayDateString() {
     const now = new Date();
@@ -37,6 +38,23 @@ function getTodayDateString() {
 function extractRawNumber(idStr) {
     if (!idStr) return '';
     return String(idStr).split('@')[0].split(':')[0].trim();
+}
+
+function getAlphabetForMode(mode) {
+    return mode === 'AEIOU' ? ALPHABET_AEIOU : ALPHABET_ABC;
+}
+
+function getMaxWordsForMode(mode) {
+    return mode === 'AEIOU' ? 2 : 3;
+}
+
+function getNonAdminParticipants(chat, botId) {
+    if (!chat || !chat.participants) return [];
+    return chat.participants.filter(p => {
+        const isAdmin = p.isAdmin || p.isSuperAdmin;
+        const isBot = botId && (p.id._serialized === botId || extractRawNumber(p.id._serialized) === extractRawNumber(botId));
+        return !isAdmin && !isBot;
+    });
 }
 
 function isUserPlayed(participant, userCounts) {
@@ -60,7 +78,7 @@ function isUserPlayed(participant, userCounts) {
     }
 
     for (const id of idsToCheck) {
-        if (id && userCounts[id]) return true;
+        if (id && userCounts[id] > 0) return true;
     }
     return false;
 }
@@ -70,6 +88,7 @@ function loadGameState() {
         if (fs.existsSync(STATE_FILE)) {
             const data = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
             return {
+                mode: data.mode || 'ABC',
                 currentLetter: data.currentLetter || 'A',
                 theme: data.theme || THEMES[0],
                 userCounts: data.userCounts || {},
@@ -82,6 +101,7 @@ function loadGameState() {
         console.error("Erro ao carregar estado do ABCdário da Xuxa:", e);
     }
     return {
+        mode: 'ABC',
         currentLetter: 'A',
         theme: THEMES[0],
         userCounts: {},
@@ -126,6 +146,39 @@ async function isUserAdmin(chat, userId) {
     return participant ? (participant.isAdmin || participant.isSuperAdmin) : false;
 }
 
+async function checkLastSurvivor(chat, client) {
+    if (!chat || !chat.participants) return false;
+    const botId = client?.info?.wid?._serialized;
+    const nonAdmins = getNonAdminParticipants(chat, botId);
+
+    if (nonAdmins.length === 1) {
+        const survivor = nonAdmins[0];
+        const survivorId = survivor.id._serialized;
+        const rawNum = extractRawNumber(survivorId);
+
+        console.log(`[Xuxa Game] Apenas 1 membro não-admin restante (${survivorId}). Promovendo a Admin!`);
+
+        try {
+            await chat.promoteParticipants([survivorId]);
+        } catch (err) {
+            console.error(`Erro ao promover participante ${survivorId} a admin:`, err.message);
+        }
+
+        const xuxatronMsg = `🤖 *XUXATRON 2000 INFORMA:*
+
+👑 *PARABÉNS @${rawNum}!*
+Você é o *ÚLTIMO SOBREVIVENTE* do jogo da Xuxa!
+
+Você provou o seu valor supremo e sobreviveu ao expurgo. Como recompensa, você acaba de ser promovido a *ADMINISTRADOR* do grupo!
+
+O ciclo de tortura em breve se reiniciará, mas agora você assistirá de camarote a todas as almas morrerem pela eternidade. 💀🔥`;
+
+        await chat.sendMessage(xuxatronMsg);
+        return true;
+    }
+    return false;
+}
+
 async function banUser(chat, client, userId, reason) {
     if (await isUserAdmin(chat, userId)) {
         console.log(`[Xuxa Game] Admin ${userId} cometeu infração ("${reason}"), mas é admin e não foi banido.`);
@@ -140,6 +193,7 @@ async function banUser(chat, client, userId, reason) {
     try {
         console.log(`[Xuxa Game] Banindo silenciosamente ${userId}. Motivo: ${reason}`);
         await chat.removeParticipants([userId]);
+        await checkLastSurvivor(chat, client);
         return true;
     } catch (err) {
         console.error(`Erro ao banir usuário ${userId}:`, err.message);
@@ -153,14 +207,59 @@ A letra da rodada é "${letra}".
 O tema é "${tema}".
 A palavra/expressão enviada é "${palavra}".
 
-Diretrizes de avaliação:
-1. Verifique se a palavra ou expressão "${palavra}" começa com a letra "${letra}" (ignorando maiúsculas/minúsculas e acentos como Á, É, Í, Ó, Ú).
-2. Verifique a relação com o tema "${tema}":
-   - Para "Esportes ou Atletas": Aceite QUALQUER esporte, modalidade, arte marcial, jogo ou disciplina esportiva (ex: Iatismo, Kung Fu, Karatê, Esgrima, Luta Livre, Handebol, Natação, Rugby, Tênis, etc.) E TAMBÉM primeiros nomes, sobrenomes, apelidos ou nomes completos de atletas, jogadores, treinadores ou personalidades do esporte (ex: Tatum, Jayson Tatum, Pelé, Marta, Dunga, Chris Paul, Messi, LeBron, etc.).
-   - Para "Objetos": A palavra DEVE ser um objeto físico/concreto do mundo real. Conceitos abstratos ou gírias (ex: "vácuo") devem ser REPROVADOS ("NAO").
-   - Para "O Pietro é...": Qualquer adjetivo, característica, xingamento ou qualidade é VÁLIDO.
+REGRAS DE AVALIAÇÃO:
 
-Responda EXATAMENTE "SIM" se for uma resposta válida para o tema e letra, ou "NAO" se for inválida. Responda apenas essa palavra.`;
+1. VERIFICAÇÃO DA LETRA INICIAL:
+   - A palavra "${palavra}" (ou a primeira palavra relevante da expressão) DEVE começar com a letra "${letra}".
+   - Ignore acentos (Á, É, Í, Ó, Ú, À, Ã, Â, Ç, etc.). Exemplo: Para letra "A", "Águia", "Abacaxi", "Azeitona" são VÁLIDAS.
+
+2. VERIFICAÇÃO DO TEMA ("${tema}"):
+   Seja BASTANTE FLEXÍVEL, ABRANGENTE E GENEROSO. Não seja pedante ou estrito demais. Se o item tiver qualquer relação culinária, popular, científica ou cultural aceitável com o tema, APROVE.
+
+   Diretrizes específicas por tema:
+   - "Frutas, Verduras ou Legumes": ACEITE QUALQUER ALIMENTO OU PLANTA COMESTÍVEL DE ORIGEM VEGETAL, incluindo:
+     • Frutas, frutos e frutos botânicos (ex: Abacaxi, Banana, Tomate, Melancia, Oiti, Pitanga, Pimentão, Pepino, Abóbora, etc.)
+     • Verduras, folhosas e hortaliças (ex: Alface, Couve, Espinafre, Agrião, Rúcula, Repolho, etc.)
+     • Legumes, vagens e leguminosas (ex: Feijão, Ervilha, Vagem, Lentilha, Grão-de-bico, Quiabo, etc.)
+     • Raízes, tubérculos, rizomas e bulbos (ex: Inhame, Mandioca, Batata, Cenoura, Rabanete, Beterraba, Cebola, Alho, Wasabi, Gengibre, Nabo, Mandioquinha, etc.)
+     • Ervas, temperos, especiarias e condimentos vegetais (ex: Hortelã, Coentro, Salsa, Manjericão, Alecrim, Louro, Orégano, etc.)
+     • Flores comestíveis e vegetais florais (ex: Hibisco, Alcachofra, Brócolis, Couve-flor, etc.)
+     • Cogumelos e fungos comestíveis (ex: Champignon, Shimeji, Shiitake, Cogumelo, etc.)
+     • Sementes, nozes, castanhas e grãos (ex: Amendoim, Noz, Castanha, Gergelim, Milho, etc.)
+
+   - "Comidas, Bebidas ou Sobremesas": ACEITE qualquer prato, refeição, alimento preparado, ingrediente, bebida alcoólica ou não alcoólica, sobremesa, doce, fruta, fast-food, guloseima ou marca de comida/bebida.
+
+   - "Filmes, Séries ou Desenhos": ACEITE qualquer título de filme, série, novela, anime, desenho animado, franquia ou personagem principal de audiovisual em português ou inglês.
+
+   - "Países, Cidades ou Capitais": ACEITE países, cidades, capitais, estados, regiões, continentes, apelidos famosos de cidades ou gentílicos.
+
+   - "Animais, Insetos ou Seres Vivos": ACEITE qualquer animal, inseto, ave, peixe, réptil, anfíbio, dinossauro, planta, fungo, bactéria, criatura mítica ou ser vivo.
+
+   - "Marcas, Empresas ou Produtos": ACEITE qualquer marca comercial, empresa, corporação, produto, loja, aplicativo, site, fabricante ou modelo de veículo/eletrônico.
+
+   - "Famosos, Celebridades ou Personagens Históricos": ACEITE primeiros nomes, sobrenomes, nomes completos, apelidos famosos, nomes artísticos de celebridades, atores, cantores, atletas, influenciadores ou figuras históricas.
+
+   - "Jogos, Games ou Personagens de Games": ACEITE videogames, jogos de PC, mobile, tabuleiro, cartas, e-sports e personagens de games.
+
+   - "Objetos do Dia a Dia": ACEITE qualquer objeto físico, utensílio, ferramenta, móvel, eletrodoméstico, vestuário, veículo, instrumento ou item concreto. Apenas conceitos puramente abstratos (ex: "vácuo", "saudade") devem ser recusados.
+
+   - "Profissões ou Áreas de Estudo": ACEITE profissões, ocupações, cargos, disciplinas acadêmicas, ciências ou campos de estudo.
+
+   - "Partes do Corpo Humano ou Anatomia": ACEITE órgãos, ossos, músculos, tecidos, fluidos ou partes anatômicas humanas.
+
+   - "Músicas, Bandas ou Cantores": ACEITE títulos de músicas, nomes de bandas, cantores, compositores ou gêneros musicais.
+
+   - "Esportes ou Atletas": ACEITE modalidades esportivas, artes marciais, disciplinas esportivas e nomes/sobrenomes de atletas, jogadores ou treinadores.
+
+   - "Vilões de Filmes ou Desenhos": ACEITE vilões, antagonistas ou anti-heróis de filmes, desenhos, animes, séries ou quadrinhos.
+
+   - "O Pietro é...": Qualquer adjetivo, característica, qualidade ou adjetivação em português é VÁLIDA.
+
+   - "Tema Livre (Qualquer bosta)": Qualquer palavra ou expressão real existente em português ou inglês é VÁLIDA.
+
+Responda EXATAMENTE e APENAS uma palavra:
+"SIM" se a palavra for aceita.
+"NAO" se a palavra for recusada.`;
 
     try {
         const resposta = await perguntarIA([{ role: "user", content: prompt }]);
@@ -196,16 +295,28 @@ function gerarPalavraParaLetraA(tema) {
     return "Amor";
 }
 
-function buildRulesText() {
+function buildRulesTextABC() {
     return `REGRAS DO ABCdário DA XUXA (LEIA COM ATENÇÃO!)
 
 REGRAS DE SOBREVIVÊNCIA:
 • Não usou o formato "A de Amor"? BAN.
 • Não falou no dia? BAN.
-• Letra fora da ordem alfabética? BAN.
+• Letra fora da ordem alfabética (A a Z)? BAN.
 • Palavra fora do tema? BAN.
 • Acabou o alfabeto (Z) sem você ter falado? BAN.
 • Falou MAIS de 3 palavras no mesmo dia? BAN.`;
+}
+
+function buildRulesTextAEIOU() {
+    return `REGRAS DO AEIOU DA XUXA (MODO SOBREVIVÊNCIA DE 9 MEMBROS!)
+
+REGRAS DE SOBREVIVÊNCIA:
+• Não usou o formato "A de Amor"? BAN.
+• Não falou no dia? BAN.
+• Letra fora da ordem das vogais (A-E-I-O-U)? BAN.
+• Palavra fora do tema? BAN.
+• Acabou as vogais (U) sem você ter falado? BAN.
+• Falou MAIS de 2 palavras no mesmo dia? BAN.`;
 }
 
 async function executeDailyReset(client) {
@@ -219,11 +330,11 @@ async function executeDailyReset(client) {
             return;
         }
 
+        const botId = client?.info?.wid?._serialized;
         const playedUserIds = state.userCounts || {};
         const wasGameActiveYesterday = state.gameStarted && !state.gameCompletedToday && Object.keys(playedUserIds).length > 0;
-        const botId = client?.info?.wid?._serialized;
 
-        // Se o jogo de ontem NÃO terminou no Z (ficou incompleto às 00:01), bane quem não participou ontem
+        // Se o jogo de ontem NÃO terminou (ficou incompleto às 00:01), bane quem não participou ontem
         if (wasGameActiveYesterday) {
             const unplayedNonAdmins = [];
             for (const p of chat.participants) {
@@ -243,15 +354,32 @@ async function executeDailyReset(client) {
                 }
             }
         } else {
-            console.log("[Xuxa Game] O jogo anterior foi concluído no Z ou era primeira execução. Nenhum banimento aplicado no reset das 00:01.");
+            console.log("[Xuxa Game] O jogo anterior foi concluído ou era primeira execução. Nenhum banimento aplicado no reset das 00:01.");
         }
+
+        // Verifica se sobrou apenas 1 não-admin
+        if (await checkLastSurvivor(chat, client)) {
+            state.gameCompletedToday = true;
+            state.gameStarted = false;
+            saveGameState(state);
+            return;
+        }
+
+        // Verifica o número de participantes não-admins para decidir o modo (AEIOU vs ABC)
+        const currentNonAdmins = getNonAdminParticipants(chat, botId);
+        const isAEIOUMode = currentNonAdmins.length <= 9;
+        const mode = isAEIOUMode ? 'AEIOU' : 'ABC';
+        const alphabet = getAlphabetForMode(mode);
 
         // Sorteia novo tema e reseta para a nova rodada
         const newTheme = getRandomTheme(state.theme);
         const botWordA = await gerarPalavraParaLetraA(newTheme);
 
+        const nextLetterAfterA = alphabet[1]; // 'E' no AEIOU, 'B' no ABC
+
         const newState = {
-            currentLetter: 'B',
+            mode: mode,
+            currentLetter: nextLetterAfterA,
             theme: newTheme,
             userCounts: {},
             lastResetDate: todayStr,
@@ -260,8 +388,8 @@ async function executeDailyReset(client) {
         };
         saveGameState(newState);
 
-        // 1ª Mensagem: Regras de Sobrevivência
-        await chat.sendMessage(buildRulesText());
+        // 1ª Mensagem: Regras de Sobrevivência (AEIOU vs ABC)
+        await chat.sendMessage(mode === 'AEIOU' ? buildRulesTextAEIOU() : buildRulesTextABC());
 
         // 2ª Mensagem: Tema de Hoje
         await chat.sendMessage(`TEMA DE HOJE: ${newTheme}`);
@@ -301,12 +429,15 @@ async function handleXuxaGameMessage(message, client) {
 
         const state = loadGameState();
 
-        // Se a rodada não começou ou o jogo já foi concluído hoje (após o Z), ignora a mensagem (grupo livre)
+        // Se a rodada não começou ou o jogo já foi concluído hoje, ignora a mensagem (grupo livre)
         if (!state.gameStarted || state.gameCompletedToday) {
             return false;
         }
 
         const chat = await message.getChat();
+        const mode = state.mode || 'ABC';
+        const alphabet = getAlphabetForMode(mode);
+        const maxWords = getMaxWordsForMode(mode);
         const expectedLetter = state.currentLetter.toUpperCase();
 
         // Procura entre as linhas da mensagem pela linha no formato "<Letra> de <Palavra>"
@@ -323,56 +454,69 @@ async function handleXuxaGameMessage(message, client) {
             }
         }
 
-        // Durante o jogo ativo, QUALQUER mensagem de participante que não siga o formato "X de Y" resulta em BAN!
+        // 1. FORMATO INVÁLIDO OU CONVERSA NO GRUPO (BAN SILENCIOSO)
         if (!match) {
-            await banUser(chat, client, senderId, 'Conversou durante o jogo ou não usou o formato "X de Y" (ex: "A de Amor").');
+            await banUser(chat, client, senderId, 'Conversou durante o jogo ou não usou o formato "X de Y".');
             return true;
         }
 
         const inputLetter = match[1].toUpperCase();
         const inputPhrase = match[2].trim();
 
+        // 2. LIMITE DE PALAVRAS POR DIA (3 no ABC, 2 no AEIOU - BAN SILENCIOSO)
         const currentCount = state.userCounts[senderId] || 0;
-        if (currentCount >= 3) {
-            await banUser(chat, client, senderId, "Falou MAIS de 3 palavras no mesmo dia/rodada.");
+        if (currentCount >= maxWords) {
+            await banUser(chat, client, senderId, `Falou MAIS de ${maxWords} palavras no mesmo dia/rodada (${mode}).`);
             return true;
         }
 
+        // 3. LETRA FORA DA ORDEM (BAN SILENCIOSO)
         if (inputLetter !== expectedLetter) {
             await banUser(chat, client, senderId, `Letra fora da ordem alfabética. Esperado: ${expectedLetter}, Enviado: ${inputLetter}.`);
             return true;
         }
 
+        // 4. VALIDAÇÃO DA PALAVRA / TEMA COM IA (BAN SILENCIOSO SE REPROVADO)
         const aprovado = await validarComIA(expectedLetter, inputPhrase, state.theme);
         if (!aprovado) {
             await banUser(chat, client, senderId, `Palavra "${inputPhrase}" recusada para o tema "${state.theme}".`);
             return true;
         }
 
-        // Registra a jogada do usuário no mapa com todos os identificadores possíveis (senderId, phone, LID)
-        state.userCounts[senderId] = (state.userCounts[senderId] || 0) + 1;
-        const rawSenderNum = extractRawNumber(senderId);
-        if (rawSenderNum) {
-            state.userCounts[rawSenderNum] = (state.userCounts[rawSenderNum] || 0) + 1;
+        // REGISTRA A JOGADA DO USUÁRIO (utiliza Set para registrar todas as variações de ID exatamente 1x por jogada)
+        const idsToRegister = new Set();
+        if (senderId) {
+            idsToRegister.add(senderId);
+            const rawSenderNum = extractRawNumber(senderId);
+            if (rawSenderNum) idsToRegister.add(rawSenderNum);
         }
 
         try {
             const contact = await message.getContact();
             if (contact) {
-                if (contact.id?._serialized) state.userCounts[contact.id._serialized] = (state.userCounts[contact.id._serialized] || 0) + 1;
-                if (contact.id?.user) state.userCounts[contact.id.user] = (state.userCounts[contact.id.user] || 0) + 1;
-                if (contact.number) state.userCounts[contact.number] = (state.userCounts[contact.number] || 0) + 1;
-                if (contact.lid?._serialized) state.userCounts[contact.lid._serialized] = (state.userCounts[contact.lid._serialized] || 0) + 1;
-                if (contact.lid?.user) state.userCounts[contact.lid.user] = (state.userCounts[contact.lid.user] || 0) + 1;
+                if (contact.id?._serialized) idsToRegister.add(contact.id._serialized);
+                if (contact.id?.user) idsToRegister.add(contact.id.user);
+                if (contact.number) idsToRegister.add(contact.number);
+                if (contact.lid?._serialized) idsToRegister.add(contact.lid._serialized);
+                if (contact.lid?.user) idsToRegister.add(contact.lid.user);
             }
         } catch (e) {
             // ignore contact fetch errors
         }
 
-        const currentIndex = ALPHABET.indexOf(expectedLetter);
+        for (const id of idsToRegister) {
+            if (id) {
+                state.userCounts[id] = (state.userCounts[id] || 0) + 1;
+            }
+        }
 
-        // SE CHEGOU NA LETRA Z (CONCLUSÃO DO ALFABETO)
-        if (expectedLetter === 'Z' || currentIndex === ALPHABET.length - 1) {
+        const currentIndex = alphabet.indexOf(expectedLetter);
+        const isLastLetter = (mode === 'AEIOU' && expectedLetter === 'U') ||
+                             (mode === 'ABC' && expectedLetter === 'Z') ||
+                             currentIndex === alphabet.length - 1;
+
+        // SE CHEGOU NA ÚLTIMA LETRA (Z NO ABC OU U NO AEIOU)
+        if (isLastLetter) {
             await message.reply(`*${inputLetter} de ${inputPhrase}* APROVADO!`);
 
             saveGameState(state);
@@ -392,24 +536,27 @@ async function handleXuxaGameMessage(message, client) {
             }
 
             if (unplayedNonAdmins.length > 0) {
-                console.log(`[Xuxa Game] Alfabeto Z concluído! Banindo silenciosamente ${unplayedNonAdmins.length} membro(s) não participantes...`);
+                console.log(`[Xuxa Game] Rodada ${mode} concluída! Banindo silenciosamente ${unplayedNonAdmins.length} membro(s) não participantes...`);
                 try {
                     await chat.removeParticipants(unplayedNonAdmins);
                 } catch (err) {
-                    console.error("Erro ao banir não participantes ao concluir Z:", err.message);
+                    console.error("Erro ao banir não participantes no final da rodada:", err.message);
                 }
             }
+
+            // Verifica se sobrou apenas 1 não-admin
+            await checkLastSurvivor(chat, client);
 
             // Marca o jogo como concluído hoje (bloqueia novos jogos até 00:01 AM de amanhã)
             state.gameCompletedToday = true;
             state.gameStarted = false;
             saveGameState(state);
 
-            await chat.sendMessage("CONSEGUIRAM! O ALFABETO FOI CONCLUÍDO!\n\nAproveitem o dia livre! Até as 00:01 ninguém mais é banido.");
+            await chat.sendMessage(`🎉 *CONSEGUIRAM! O ALFABETO (${mode}) FOI CONCLUÍDO!*\n\nAproveitem o tempo livre! Até o próximo reset das 00:01 ninguém mais é banido.`);
             return true;
         }
 
-        const nextLetter = ALPHABET[currentIndex + 1];
+        const nextLetter = alphabet[currentIndex + 1];
         state.currentLetter = nextLetter;
         saveGameState(state);
 
