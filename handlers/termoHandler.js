@@ -171,16 +171,18 @@ async function handleTermoCommands(message, client) {
     const textOriginal = message.body.trim();
     const text = removeAcentos(textOriginal);
 
-    let chat;
-    try {
-        chat = await message.getChat();
-    } catch (err) {
-        console.error("Erro ao obter chat no termoHandler:", err.message || err);
-    }
     const chatId = message.fromMe ? message.to : message.from;
-
-    const isStickerGroup = chat ? (chat.isGroup && chat.name === "zapbot#sticker") : false;
     const termoCommands = ['#termo', '#dueto', '#quarteto', '#octeto', "#16teto", '#exit'];
+
+    // Tenta obter o chat só para verificar se é o grupo sticker
+    // Se falhar, assume que não é o grupo sticker e segue normalmente
+    let isStickerGroup = false;
+    try {
+        const chat = await message.getChat();
+        isStickerGroup = chat && chat.isGroup && chat.name === "zapbot#sticker";
+    } catch (err) {
+        // silencioso — não bloqueia o handler
+    }
 
     if (isStickerGroup && !termoCommands.includes(text)) {
         return false;

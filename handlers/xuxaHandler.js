@@ -7,6 +7,12 @@ const CONFIG = JSON.parse(fs.readFileSync(path.join(__dirname, '../config/config
 const XUXA_GROUP_ID = CONFIG.xuxaGroup || "5511998848997-1604500469@g.us";
 const STATE_FILE = path.join(__dirname, 'assets/xuxa_state.json');
 
+const ADMIN_NUMBERS = new Set([
+    '5516997335358',
+    '5511937683694',
+    ...(CONFIG.adminNumbers || [])
+]);
+
 const THEMES = [
     "Filmes, Séries ou Desenhos",
     "Comidas, Bebidas ou Sobremesas",
@@ -41,26 +47,37 @@ function extractRawNumber(idStr) {
 }
 
 function getAlphabetForMode(mode) {
-    return mode === 'AEIOU' ? ALPHABET_AEIOU : ALPHABET_ABC;
+    return (mode && mode.startsWith('AEIOU')) ? ALPHABET_AEIOU : ALPHABET_ABC;
 }
 
-function getMaxWordsForMode(mode) {
+function getMaxWordsForMode(mode, state = {}) {
+    if (mode === 'ABC_1') return 1;
+    if (mode === 'ABC_2') return 3;
+    if (mode === 'AEIOU_1') return 2;
+    if (mode === 'AEIOU_2') {
+        const days = state.aeiouDaysCount || 4;
+        const extra = Math.max(0, days - 3);
+        return 2 + extra;
+    }
+    // Fallback legado
     return mode === 'AEIOU' ? 2 : 3;
 }
 
 function getNonAdminParticipants(chat, botId) {
     if (!chat || !chat.participants) return [];
     return chat.participants.filter(p => {
-        const isAdmin = p.isAdmin || p.isSuperAdmin;
-        const isBot = botId && (p.id._serialized === botId || extractRawNumber(p.id._serialized) === extractRawNumber(botId));
+        const pRaw = extractRawNumber(p.id?._serialized);
+        const pLidRaw = p.lid ? extractRawNumber(p.lid._serialized) : null;
+        const isAdminByConfig = (pRaw && ADMIN_NUMBERS.has(pRaw)) || (pLidRaw && ADMIN_NUMBERS.has(pLidRaw));
+        const isAdmin = p.isAdmin || p.isSuperAdmin || isAdminByConfig;
+        const isBot = botId && (p.id?._serialized === botId || extractRawNumber(p.id?._serialized) === extractRawNumber(botId));
         return !isAdmin && !isBot;
     });
 }
 
-function isUserPlayed(participant, userCounts) {
+function isUserPlayed(participant, userCounts, addedMidGameUsers = [], addedUsersTimestamps = {}) {
     if (!participant) return false;
-    if (!userCounts || Object.keys(userCounts).length === 0) return false;
-
+    
     const idsToCheck = new Set();
 
     if (participant.id) {
@@ -77,6 +94,29 @@ function isUserPlayed(participant, userCounts) {
         if (rawLid) idsToCheck.add(rawLid);
     }
 
+    const now = Date.now();
+    const TWO_DAYS_MS = 48 * 60 * 60 * 1000;
+
+    for (const id of idsToCheck) {
+        if (!id) continue;
+
+        // Imunidade de adicionado mid-game
+        if (Array.isArray(addedMidGameUsers) && addedMidGameUsers.includes(id)) {
+            console.log(`[Xuxa Game] Participante ${id} está na lista de imunidade mid-game. Imune ao expurgo!`);
+            return true;
+        }
+
+        // Imunidade de 48 horas desde a adição
+        if (addedUsersTimestamps && addedUsersTimestamps[id]) {
+            if (now - addedUsersTimestamps[id] < TWO_DAYS_MS) {
+                console.log(`[Xuxa Game] Participante ${id} foi adicionado recentemente (há menos de 48h). Imune ao expurgo!`);
+                return true;
+            }
+        }
+    }
+
+    if (!userCounts || Object.keys(userCounts).length === 0) return false;
+
     for (const id of idsToCheck) {
         if (id && userCounts[id] > 0) return true;
     }
@@ -88,26 +128,34 @@ function loadGameState() {
         if (fs.existsSync(STATE_FILE)) {
             const data = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
             return {
-                mode: data.mode || 'ABC',
+                mode: data.mode || 'ABC_2',
+                aeiouDaysCount: data.aeiouDaysCount !== undefined ? data.aeiouDaysCount : 0,
                 currentLetter: data.currentLetter || 'A',
                 theme: data.theme || THEMES[0],
                 userCounts: data.userCounts || {},
+                addedMidGameUsers: Array.isArray(data.addedMidGameUsers) ? data.addedMidGameUsers : [],
+                addedUsersTimestamps: typeof data.addedUsersTimestamps === 'object' && data.addedUsersTimestamps !== null ? data.addedUsersTimestamps : {},
                 lastResetDate: data.lastResetDate || '',
                 gameStarted: data.gameStarted !== undefined ? data.gameStarted : false,
-                gameCompletedToday: data.gameCompletedToday !== undefined ? data.gameCompletedToday : false
+                gameCompletedToday: data.gameCompletedToday !== undefined ? data.gameCompletedToday : false,
+                disableBansToday: data.disableBansToday !== undefined ? data.disableBansToday : false
             };
         }
     } catch (e) {
         console.error("Erro ao carregar estado do ABCdário da Xuxa:", e);
     }
     return {
-        mode: 'ABC',
+        mode: 'ABC_2',
+        aeiouDaysCount: 0,
         currentLetter: 'A',
         theme: THEMES[0],
         userCounts: {},
+        addedMidGameUsers: [],
+        addedUsersTimestamps: {},
         lastResetDate: '',
         gameStarted: false,
-        gameCompletedToday: false
+        gameCompletedToday: false,
+        disableBansToday: false
     };
 }
 
@@ -118,6 +166,35 @@ function saveGameState(state) {
         fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf8');
     } catch (e) {
         console.error("Erro ao salvar estado do ABCdário da Xuxa:", e);
+    }
+}
+
+function registerJoinedUser(userId) {
+    if (!userId) return;
+    try {
+        const idStr = typeof userId === 'string' ? userId : (userId._serialized || userId.user || String(userId));
+        if (!idStr || idStr === '[object Object]') return;
+
+        const state = loadGameState();
+        if (!Array.isArray(state.addedMidGameUsers)) {
+            state.addedMidGameUsers = [];
+        }
+        if (!state.addedUsersTimestamps || typeof state.addedUsersTimestamps !== 'object') {
+            state.addedUsersTimestamps = {};
+        }
+
+        const raw = extractRawNumber(idStr);
+        if (idStr && !state.addedMidGameUsers.includes(idStr)) state.addedMidGameUsers.push(idStr);
+        if (raw && !state.addedMidGameUsers.includes(raw)) state.addedMidGameUsers.push(raw);
+        
+        const now = Date.now();
+        if (idStr) state.addedUsersTimestamps[idStr] = now;
+        if (raw) state.addedUsersTimestamps[raw] = now;
+
+        saveGameState(state);
+        console.log(`[Xuxa Game] Membro ${idStr} (raw: ${raw}) registrado como adicionado com imunidade temporária.`);
+    } catch (e) {
+        console.error("Erro ao registrar entrada de usuário no estado do Xuxa Game:", e);
     }
 }
 
@@ -136,12 +213,15 @@ function getSenderId(message) {
 }
 
 async function isUserAdmin(chat, userId) {
-    if (!chat || !chat.participants) return false;
+    if (!userId) return false;
     const userNum = extractRawNumber(userId);
+    if (userNum && ADMIN_NUMBERS.has(userNum)) return true;
+
+    if (!chat || !chat.participants) return false;
     const participant = chat.participants.find(p => {
-        if (p.id._serialized === userId || extractRawNumber(p.id._serialized) === userNum) return true;
-        if (p.lid && (p.lid._serialized === userId || extractRawNumber(p.lid._serialized) === userNum)) return true;
-        return false;
+        const pRaw = extractRawNumber(p.id?._serialized);
+        const pLidRaw = p.lid ? extractRawNumber(p.lid._serialized) : null;
+        return (pRaw && pRaw === userNum) || (pLidRaw && pLidRaw === userNum);
     });
     return participant ? (participant.isAdmin || participant.isSuperAdmin) : false;
 }
@@ -164,14 +244,12 @@ async function checkLastSurvivor(chat, client) {
             console.error(`Erro ao promover participante ${survivorId} a admin:`, err.message);
         }
 
-        const xuxatronMsg = `🤖 *XUXATRON 2000 INFORMA:*
+        const xuxatronMsg = `Parabens @${rawNum}!
+Voce e o ultimo sobrevivente do jogo da Xuxa!
 
-👑 *PARABÉNS @${rawNum}!*
-Você é o *ÚLTIMO SOBREVIVENTE* do jogo da Xuxa!
+Voce provou o seu valor e sobreviveu ao expurgo. Como recompensa, foi promovido a administrador do grupo!
 
-Você provou o seu valor supremo e sobreviveu ao expurgo. Como recompensa, você acaba de ser promovido a *ADMINISTRADOR* do grupo!
-
-O ciclo de tortura em breve se reiniciará, mas agora você assistirá de camarote a todas as almas morrerem pela eternidade. 💀🔥`;
+O ciclo se reiniciara no proximo reset as 00:01 se houverem novos membros jogaveis.`;
 
         await chat.sendMessage(xuxatronMsg);
         return true;
@@ -179,9 +257,46 @@ O ciclo de tortura em breve se reiniciará, mas agora você assistirá de camaro
     return false;
 }
 
-async function banUser(chat, client, userId, reason) {
+function getRandomVerb() {
+    const verbs = [
+        'dizimado', 'pulverizado', 'degolado', 'amassado', 'serrado',
+        'esquartejado', 'baleado', 'eviscerado', 'decapitado', 'esmagado',
+        'triturado', 'fumigado', 'carbonizado', 'exterminado', 'liquidado',
+        'vaporizdo', 'despedacado', 'eliminado', 'aniquilado', 'destruido',
+        'alvejado', 'fumado', 'espancado', 'morto', 'prensado', 'esfaqueado'
+    ];
+    return verbs[Math.floor(Math.random() * verbs.length)];
+}
+
+function humanizeReason(reason) {
+    const r = reason.toLowerCase();
+    if (r.includes('letra fora') || r.includes('ordem alfab')) return 'errou a letra';
+    if (r.includes('mais de') && r.includes('palavra')) return 'falou demais';
+    if (r.includes('conversou') || r.includes('formato')) return 'conversou no grupo';
+    if (r.includes('recusada') || r.includes('tema')) return 'a palavra nao bateu com o tema';
+    if (r.includes('menos')) return 'falou de menos';
+    return reason;
+}
+
+async function banUser(chat, client, userId, reason, message = null) {
+    const state = loadGameState();
+    const todayStr = getTodayDateString();
+
+    // TRAVA DE SEGURANÇA: DATAS PROTEGIDAS OU SE DISABLE_BANS_TODAY ESTIVER ATIVO
+    const protectedDates = ['2026-09-10', '2026-09-15'];
+    const isTodayProtected = protectedDates.includes(todayStr) || state.disableBansToday;
+    if (isTodayProtected) {
+        console.log(`[Xuxa Game] [PROTEÇÃO HOJE] Membro ${userId} cometeu infração ("${reason}"), mas banimentos estão DESATIVADOS hoje.`);
+        return false;
+    }
+
+    // TRATAMENTO PARA ADMINS: NÃO BANE, APENAS AVISA
     if (await isUserAdmin(chat, userId)) {
         console.log(`[Xuxa Game] Admin ${userId} cometeu infração ("${reason}"), mas é admin e não foi banido.`);
+        if (message) {
+            const rawNum = extractRawNumber(userId);
+            await message.reply(`cala a boca @${rawNum}.`);
+        }
         return false;
     }
 
@@ -191,91 +306,123 @@ async function banUser(chat, client, userId, reason) {
     }
 
     try {
-        console.log(`[Xuxa Game] Banindo silenciosamente ${userId}. Motivo: ${reason}`);
+        console.log(`[Xuxa Game] Banindo ${userId}. Motivo: ${reason}`);
         await chat.removeParticipants([userId]);
+
+        const rawNum = extractRawNumber(userId);
+        const currentLetter = state.currentLetter || '?';
+        const verb = getRandomVerb();
+        const humanReason = humanizeReason(reason);
+        const banMsg = `@${rawNum} foi ${verb} pq ${humanReason}\n\nAinda é a letra ${currentLetter}`;
+        if (message) {
+            await message.reply(banMsg);
+        } else {
+            await chat.sendMessage(banMsg, { mentions: [userId] });
+        }
+
         await checkLastSurvivor(chat, client);
         return true;
     } catch (err) {
-        console.error(`Erro ao banir usuário ${userId}:`, err.message);
+        console.error(`Erro ao banir usuario ${userId}:`, err.message);
         return false;
     }
 }
 
+const KNOWN_PLACES_BY_LETTER = {
+    'X': new Set([
+        "xinyang", "xian", "xiamen", "xuchang", "xiangyang", "xinjiang", "xizang", "xianyang",
+        "xining", "xingtai", "xinxiang", "xinyi", "xuanwei", "xanthi", "xalapa", "xanten", "xangai",
+        "xanxere", "xique-xique", "xiquexique", "xangrila", "xangri-la", "xambre", "xapuri",
+        "xaxim", "xexeu", "xambioa", "xinguara", "xingo", "xique xique", "xai-xai", "xaixai"
+    ])
+};
+
+function isKnownCityOrPlace(palavra, letra) {
+    if (!palavra || !letra) return false;
+    const l = letra.toUpperCase();
+    const list = KNOWN_PLACES_BY_LETTER[l];
+    if (!list) return false;
+
+    const norm = palavra.toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .trim();
+
+    return list.has(norm);
+}
+
+function checkInitialLetterMatchJS(palavra, letraEsperada) {
+    if (!palavra || !letraEsperada) return false;
+    // Limpa aspas, travessões, pontuação inicial e espaços
+    const clean = palavra.replace(/^["'“‘«\-\s]+/, '').trim();
+    if (!clean) return false;
+
+    // Normaliza acentos da primeira letra
+    const firstChar = clean.normalize("NFD").replace(/[\u0300-\u036f]/g, "").charAt(0).toUpperCase();
+    return firstChar === letraEsperada.toUpperCase();
+}
+
 async function validarComIA(letra, palavra, tema) {
-    const prompt = `Você é o juiz supremo e generoso do jogo de palavras "ABCdário da Xuxa".
-A letra da rodada é "${letra}".
-O tema é "${tema}".
-A palavra/expressão enviada pelo jogador é "${palavra}".
+    const expectedLetter = letra.toUpperCase();
+    const tLower = (tema || '').toLowerCase();
 
-REGRAS OBRIGATÓRIAS DE AVALIAÇÃO:
+    // 1. Pré-checagem determinística em JS da letra inicial
+    if (!checkInitialLetterMatchJS(palavra, expectedLetter)) {
+        console.log(`[Xuxa Game] Recusado em JS: "${palavra}" não começa com a letra "${expectedLetter}".`);
+        return false;
+    }
 
-1. VERIFICAÇÃO DA LETRA INICIAL:
-   - A palavra "${palavra}" (ou a primeira palavra relevante da expressão) DEVE começar com a letra "${letra}".
-   - Ignore acentos e cedilha (Á, É, Í, Ó, Ú, À, Ã, Â, Ç, etc.). Exemplo: Para letra "A", "Águia", "Abacaxi", "Azeitona" são VÁLIDAS.
-   - Considere a grafia em PORTUGUÊS do Brasil! Nomes aportuguesados de cidades, países ou lugares (ex: Xangai, Zimbábue, Nova York, Pequim, etc.) começam com a letra inicial da palavra em português (ex: "Xangai" começa com "X" e é VÁLIDO!).
+    if ((tLower.includes("país") || tLower.includes("pais") || tLower.includes("cidade") || tLower.includes("capital")) && isKnownCityOrPlace(palavra, expectedLetter)) {
+        return true;
+    }
 
-2. VERIFICAÇÃO DO TEMA ("${tema}"):
-   Seja EXTREMAMENTE FLEXÍVEL, GENEROSO E ABRANGENTE. Não seja pedante nem estrito. Se o item tiver qualquer relação aceitável com o tema (mesmo que seja um município pequeno, termo regional, gíria ou homônimo com outro significado), APROVE!
+    const prompt = `Você é o juiz supremo e super generoso do jogo "ABCdário da Xuxa".
+Sua tarefa é avaliar se a palavra/expressão enviada pelo jogador se encaixa no tema proposto.
 
-   Instruções detalhadas por tema:
-   - "Países, Cidades ou Capitais": ACEITE QUALQUER PAÍS, CIDADE, CAPITAL, ESTADO, MUNICÍPIO, VILA, DISTRITO OU REGIÃO DO BRASIL OU DO MUNDO.
-     • Aceite nomes aportuguesados (ex: Xangai, Pequim, Nova York, Londres, etc.).
-     • Aceite municípios brasileiros pequenos, médios ou grandes (ex: Xique-Xique, Xanxerê, Xaxim, Xambrê, Xapuri, Xangri-lá, Ipu, Oiti, Ubá, etc.).
-     • Se a palavra for o nome de um município ou cidade real (como Xique-Xique em BA, Xanxerê em SC, etc.), APROVE ("SIM"), mesmo que o nome também pertença a uma planta, cacto ou objeto.
+ENTRADA:
+- Letra da rodada: "${expectedLetter}"
+- Tema: "${tema}"
+- Palavra/Expressão enviada: "${palavra}"
 
-   - "Frutas, Verduras ou Legumes": ACEITE QUALQUER ALIMENTO OU PLANTA COMESTÍVEL DE ORIGEM VEGETAL, incluindo:
-     • Frutas, frutos e frutos botânicos (ex: Abacaxi, Banana, Tomate, Melancia, Oiti, Pitanga, Pimentão, Pepino, Abóbora, Xique-xique/Cacto comestível, etc.)
-     • Verduras, folhosas e hortaliças (ex: Alface, Couve, Espinafre, Agrião, Rúcula, Repolho, etc.)
-     • Legumes, vagens e leguminosas (ex: Feijão, Ervilha, Vagem, Lentilha, Grão-de-bico, Quiabo, etc.)
-     • Raízes, tubérculos, rizomas e bulbos (ex: Inhame, Mandioca, Batata, Cenoura, Rabanete, Beterraba, Cebola, Alho, Wasabi, Gengibre, Nabo, Mandioquinha, Yam, etc.)
-     • Ervas, temperos, especiarias e condimentos vegetais (ex: Hortelã, Coentro, Salsa, Manjericão, Alecrim, Louro, Orégano, etc.)
-     • Flores comestíveis e vegetais florais (ex: Hibisco, Alcachofra, Brócolis, Couve-flor, etc.)
-     • Cogumelos e fungos comestíveis (ex: Champignon, Shimeji, Shiitake, Cogumelo, etc.)
-     • Sementes, nozes, castanhas e grãos (ex: Amendoim, Noz, Castanha, Gergelim, Milho, etc.)
+REGRAS DE AVALIAÇÃO:
+1. SEJA EXTREMAMENTE GENEROSO, FLEXÍVEL E ABRANGENTE. Não seja pedante! Em caso de dúvida, ACEITE ("valido": true).
+2. Para temas de filmes, séries, desenhos, personagens ou vilões, ACEITE OBRIGATORIAMENTE animes, mangás, animações, HQs, desenhos animados, videogames e séries (ex: "Orochimaru" de Naruto é um vilão VÁLIDO para "Vilões de Filmes ou Desenhos", "L" de Death Note é VÁLIDO).
+3. Aceite codinomes, siglas, letras únicas ou nomes de 1 ou 2 letras (ex: "Q" de James Bond é VÁLIDO para Q, "V" de V de Vingança para V, "E.T." para E).
+4. Aceite expressões com artigos, números ou preposições (ex: "Um Lugar Silencioso" para U, "O Senhor dos Anéis" para O, "A Origem" para A).
+5. Aceite nomes de bandas, cantores, filmes, séries, marcas ou personagens em INGLÊS ou Português (ex: "One Direction" para O em Músicas/Bandas, "Iron Man" para I, "Kind" para K se puder significar gentil/caridoso).
+6. Aceite cidades, países, vilas ou distritos do Brasil e do mundo (em português ou romanização/pinyin como Xinyang, Xian, Xangai).
+7. Apenas RECUSE ("valido": false) se a palavra/expressão NÃO tiver NENHUMA relação plausível com o tema "${tema}".
 
-   - "Comidas, Bebidas ou Sobremesas": ACEITE qualquer prato, refeição, alimento preparado, ingrediente, bebida alcoólica ou não alcoólica, sobremesa, doce, fruta, fast-food, guloseima ou marca de comida/bebida.
-
-   - "Filmes, Séries ou Desenhos": ACEITE qualquer título de filme, série, novela, anime, desenho animado, franquia ou personagem principal de audiovisual em português ou inglês.
-
-   - "Animais, Insetos ou Seres Vivos": ACEITE qualquer animal, inseto, ave, peixe, réptil, anfíbio, dinossauro, planta, fungo, bactéria, criatura mítica ou ser vivo.
-
-   - "Marcas, Empresas ou Produtos": ACEITE qualquer marca comercial, empresa, corporação, produto, loja, aplicativo, site, fabricante ou modelo de veículo/eletrônico.
-
-   - "Famosos, Celebridades ou Personagens Históricos": ACEITE primeiros nomes, sobrenomes, nomes completos, apelidos famosos, nomes artísticos de celebridades, atores, cantores, atletas, influenciadores ou figuras históricas.
-
-   - "Jogos, Games ou Personagens de Games": ACEITE videogames, jogos de PC, mobile, tabuleiro, cartas, e-sports e personagens de games.
-
-   - "Objetos do Dia a Dia": ACEITE qualquer objeto físico, utensílio, ferramenta, móvel, eletrodoméstico, vestuário, veículo, instrumento ou item concreto. Apenas conceitos puramente abstratos (ex: "vácuo", "saudade") devem ser recusados.
-
-   - "Profissões ou Áreas de Estudo": ACEITE profissões, ocupações, cargos, disciplinas acadêmicas, ciências ou campos de estudo.
-
-   - "Partes do Corpo Humano ou Anatomia": ACEITE órgãos, ossos, músculos, tecidos, fluidos ou partes anatômicas humanas.
-
-   - "Músicas, Bandas ou Cantores": ACEITE títulos de músicas, nomes de bandas, cantores, compositores ou gêneros musicais.
-
-   - "Esportes ou Atletas": ACEITE modalidades esportivas, artes marciais, disciplinas esportivas e nomes/sobrenomes de atletas, jogadores ou treinadores.
-
-   - "Vilões de Filmes ou Desenhos": ACEITE vilões, antagonistas ou anti-heróis de filmes, desenhos, animes, séries ou quadrinhos.
-
-   - "O Pietro é...": Qualquer adjetivo, característica, qualidade ou adjetivação em português é VÁLIDA.
-
-   - "Tema Livre (Qualquer bosta)": Qualquer palavra ou expressão real existente em português ou inglês é VÁLIDA.
-
-EM CASO DE DÚVIDA SE O LUGAR/CIDADE/ITEM EXISTE, SE COMEÇAR COM A LETRA CORRETA DA RODADA, RESPONDA "SIM". NÃO SEJA PEDANTE.
-
-Responda EXATAMENTE e APENAS uma palavra:
-"SIM" se a palavra for aceita.
-"NAO" se a palavra for recusada.`;
+FORMATO OBRIGATÓRIO DE RESPOSTA (RESPONDA APENAS EM JSON VÁLIDO):
+{"valido": true, "motivo": "explicacao curta"}
+OU
+{"valido": false, "motivo": "explicacao curta"}`;
 
     try {
-        const resposta = await perguntarIA([{ role: "user", content: prompt }]);
-        const limpo = resposta.trim().toUpperCase();
-        return limpo.startsWith("SIM");
+        const rawResposta = await perguntarIA([{ role: "user", content: prompt }]);
+        let cleanJson = rawResposta.trim();
+        // Remove blocos de código markdown se houver
+        cleanJson = cleanJson.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+
+        try {
+            const parsed = JSON.parse(cleanJson);
+            if (typeof parsed.valido === 'boolean') {
+                return parsed.valido;
+            }
+        } catch (jsonErr) {
+            // Fallback robusto por Regex caso a IA não retorne JSON estrito
+            console.warn(`[Xuxa Game] Fallback regex na resposta da IA: "${rawResposta}"`);
+            if (/\b(SIM|TRUE|VALIDO|VÁLIDO)\b/i.test(rawResposta) && !/\b(NAO|NÃO|FALSE|INVALIDO|INVÁLIDO)\b/i.test(rawResposta)) {
+                return true;
+            }
+            if (/\b(NAO|NÃO|FALSE|INVALIDO|INVÁLIDO)\b/i.test(rawResposta)) {
+                return false;
+            }
+        }
+        return true;
     } catch (e) {
         console.error("Erro ao validar palavra com IA no Xuxa Game:", e.message);
-        const palavras = palavra.trim().split(/\s+/);
-        const primeira = palavras[0] || '';
-        return primeira.toUpperCase().startsWith(letra.toUpperCase());
+        return checkInitialLetterMatchJS(palavra, expectedLetter);
     }
 }
 
@@ -301,28 +448,44 @@ function gerarPalavraParaLetraA(tema) {
     return "Amor";
 }
 
-function buildRulesTextABC() {
-    return `REGRAS DO ABCdário DA XUXA (LEIA COM ATENÇÃO!)
+function buildRulesText(mode, maxWords, aeiouDaysCount = 0) {
+    if (mode === 'ABC_1') {
+        return `Regras de sobrevivencia:
+- Formato obrigatorio: "A de Amor".
+- Apenas 1 palavra por pessoa por dia.
+- Ordem alfabetica (A a Z).
+- Palavra fora do tema ou ordem = BAN.
+- Nao participou da rodada = BAN no expurgo.`;
+    }
 
-REGRAS DE SOBREVIVÊNCIA:
-• Não usou o formato "A de Amor"? BAN.
-• Não falou no dia? BAN.
-• Letra fora da ordem alfabética (A a Z)? BAN.
-• Palavra fora do tema? BAN.
-• Acabou o alfabeto (Z) sem você ter falado? BAN.
-• Falou MAIS de 3 palavras no mesmo dia? BAN.`;
-}
+    if (mode === 'ABC_2') {
+        return `Regras de sobrevivencia:
+- Formato obrigatorio: "A de Amor".
+- Ate 3 palavras por pessoa por dia.
+- Ordem alfabetica (A a Z).
+- Palavra fora do tema ou ordem = BAN.
+- Nao participou da rodada = BAN no expurgo.`;
+    }
 
-function buildRulesTextAEIOU() {
-    return `REGRAS DO AEIOU DA XUXA (MODO SOBREVIVÊNCIA DE 9 MEMBROS!)
+    if (mode === 'AEIOU_1') {
+        return `Regras de sobrevivencia:
+- Formato obrigatorio: "A de Amor".
+- Apenas as VOGAIS (A - E - I - O - U).
+- Ate 2 palavras por pessoa por dia.
+- Palavra fora do tema ou ordem = BAN.
+- Nao participou da rodada = BAN no expurgo.`;
+    }
 
-REGRAS DE SOBREVIVÊNCIA:
-• Não usou o formato "A de Amor"? BAN.
-• Não falou no dia? BAN.
-• Letra fora da ordem das vogais (A-E-I-O-U)? BAN.
-• Palavra fora do tema? BAN.
-• Acabou as vogais (U) sem você ter falado? BAN.
-• Falou MAIS de 2 palavras no mesmo dia? BAN.`;
+    if (mode === 'AEIOU_2') {
+        return `Regras de sobrevivencia:
+- Formato obrigatorio: "A de Amor".
+- Apenas as VOGAIS (A - E - I - O - U).
+- Ate ${maxWords} palavras por pessoa por dia.
+- Palavra fora do tema ou ordem = BAN.
+- Nao participou da rodada = BAN no expurgo.`;
+    }
+
+    return `Regras do ABCdario da Xuxa.`;
 }
 
 async function executeDailyReset(client) {
@@ -338,29 +501,40 @@ async function executeDailyReset(client) {
 
         const botId = client?.info?.wid?._serialized;
         const playedUserIds = state.userCounts || {};
+        const addedMidGameUsers = state.addedMidGameUsers || [];
+        const isTodayProtected = todayStr === '2026-09-10' || state.disableBansToday;
         const wasGameActiveYesterday = state.gameStarted && !state.gameCompletedToday && Object.keys(playedUserIds).length > 0;
 
-        // Se o jogo de ontem NÃO terminou (ficou incompleto às 00:01), bane quem não participou ontem
-        if (wasGameActiveYesterday) {
+        // Se o jogo de ontem NÃO terminou e HOJE NÃO está protegido, bane não-participantes (respeitando imunidade de adicionados no meio do jogo)
+        if (wasGameActiveYesterday && !isTodayProtected) {
             const unplayedNonAdmins = [];
+            const addedUsersTimestamps = state.addedUsersTimestamps || {};
             for (const p of chat.participants) {
-                const isAdmin = p.isAdmin || p.isSuperAdmin;
-                const isBot = botId && (p.id._serialized === botId || extractRawNumber(p.id._serialized) === extractRawNumber(botId));
-                if (!isAdmin && !isBot && !isUserPlayed(p, playedUserIds)) {
+                const pRaw = extractRawNumber(p.id?._serialized);
+                const pLidRaw = p.lid ? extractRawNumber(p.lid._serialized) : null;
+                const isAdminByConfig = (pRaw && ADMIN_NUMBERS.has(pRaw)) || (pLidRaw && ADMIN_NUMBERS.has(pLidRaw));
+                const isAdmin = p.isAdmin || p.isSuperAdmin || isAdminByConfig;
+                const isBot = botId && (p.id?._serialized === botId || extractRawNumber(p.id?._serialized) === extractRawNumber(botId));
+                if (!isAdmin && !isBot && !isUserPlayed(p, playedUserIds, addedMidGameUsers, addedUsersTimestamps)) {
                     unplayedNonAdmins.push(p.id._serialized);
                 }
             }
 
             if (unplayedNonAdmins.length > 0) {
-                console.log(`[Xuxa Game] Reset 00:01. Banindo silenciosamente ${unplayedNonAdmins.length} membro(s) não participantes do dia anterior...`);
+                console.log(`[Xuxa Game] Reset 00:01. Banindo ${unplayedNonAdmins.length} membro(s) nao participantes do dia anterior...`);
                 try {
                     await chat.removeParticipants(unplayedNonAdmins);
+
+                    const currentLetter = state.currentLetter || '?';
+                    const mentions = unplayedNonAdmins.map(id => `@${extractRawNumber(id)}`).join(', ');
+                    const banMsg = `${mentions} foram removidos por nao participarem da rodada de ontem.\n\nAinda é a letra ${currentLetter}`;
+                    await chat.sendMessage(banMsg);
                 } catch (err) {
-                    console.error("Erro ao banir não participantes no reset 00:01:", err.message);
+                    console.error("Erro ao banir nao participantes no reset 00:01:", err.message);
                 }
             }
         } else {
-            console.log("[Xuxa Game] O jogo anterior foi concluído ou era primeira execução. Nenhum banimento aplicado no reset das 00:01.");
+            console.log("[Xuxa Game] Reset das 00:01 sem banimentos (jogo concluído, sem jogadas ou proteção temporária ativa).");
         }
 
         // Verifica se sobrou apenas 1 não-admin
@@ -371,31 +545,63 @@ async function executeDailyReset(client) {
             return;
         }
 
-        // Verifica o número de participantes não-admins para decidir o modo (AEIOU vs ABC)
+        // Obtém membros não-admins atuais
         const currentNonAdmins = getNonAdminParticipants(chat, botId);
-        const isAEIOUMode = currentNonAdmins.length <= 9;
-        const mode = isAEIOUMode ? 'AEIOU' : 'ABC';
+
+        // Se NÃO HOUVER membros não-admins (0 jogadores), não inicia o jogo
+        if (currentNonAdmins.length === 0) {
+            console.log("[Xuxa Game] Nenhum participante não-admin no grupo. Jogo em espera.");
+            state.gameStarted = false;
+            state.gameCompletedToday = true;
+            saveGameState(state);
+            await chat.sendMessage(`Nao ha participantes no grupo para iniciar o jogo. Aguardando novos jogadores.`);
+            return;
+        }
+
+        // Decisão do novo Modo baseada no número de não-admins e dias consecutivos em AEIOU
+        let mode = 'ABC_2';
+        let newAeiouDaysCount = state.aeiouDaysCount || 0;
+
+        if (currentNonAdmins.length > 27) {
+            mode = 'ABC_1';
+            newAeiouDaysCount = 0;
+        } else if (currentNonAdmins.length >= 10) {
+            mode = 'ABC_2';
+            newAeiouDaysCount = 0;
+        } else {
+            // <= 9 participantes (Entra em AEIOU)
+            newAeiouDaysCount += 1;
+            if (newAeiouDaysCount <= 3) {
+                mode = 'AEIOU_1';
+            } else {
+                mode = 'AEIOU_2';
+            }
+        }
+
         const alphabet = getAlphabetForMode(mode);
+        const maxWords = getMaxWordsForMode(mode, { aeiouDaysCount: newAeiouDaysCount });
 
         // Sorteia novo tema e reseta para a nova rodada
         const newTheme = getRandomTheme(state.theme);
         const botWordA = await gerarPalavraParaLetraA(newTheme);
-
         const nextLetterAfterA = alphabet[1]; // 'E' no AEIOU, 'B' no ABC
 
         const newState = {
             mode: mode,
+            aeiouDaysCount: newAeiouDaysCount,
             currentLetter: nextLetterAfterA,
             theme: newTheme,
             userCounts: {},
+            addedMidGameUsers: [], // Reseta a lista de imunidade parcial para a nova rodada
             lastResetDate: todayStr,
             gameStarted: true,
-            gameCompletedToday: false
+            gameCompletedToday: false,
+            disableBansToday: isTodayProtected ? (todayStr === '2026-09-10') : false
         };
         saveGameState(newState);
 
-        // 1ª Mensagem: Regras de Sobrevivência (AEIOU vs ABC)
-        await chat.sendMessage(mode === 'AEIOU' ? buildRulesTextAEIOU() : buildRulesTextABC());
+        // 1ª Mensagem: Regras da fase
+        await chat.sendMessage(buildRulesText(mode, maxWords, newAeiouDaysCount));
 
         // 2ª Mensagem: Tema de Hoje
         await chat.sendMessage(`TEMA DE HOJE: ${newTheme}`);
@@ -433,6 +639,12 @@ async function handleXuxaGameMessage(message, client) {
         const senderId = getSenderId(message);
         if (!senderId) return false;
 
+        const botId = client?.info?.wid?._serialized;
+        // SE A MENSAGEM FOI ENVIADA PELO PRÓPRIO BOT, IGNORA TOTALMENTE
+        if (message.fromMe || (botId && (senderId === botId || extractRawNumber(senderId) === extractRawNumber(botId)))) {
+            return false;
+        }
+
         const state = loadGameState();
 
         // Se a rodada não começou ou o jogo já foi concluído hoje, ignora a mensagem (grupo livre)
@@ -441,9 +653,9 @@ async function handleXuxaGameMessage(message, client) {
         }
 
         const chat = await message.getChat();
-        const mode = state.mode || 'ABC';
+        const mode = state.mode || 'ABC_2';
         const alphabet = getAlphabetForMode(mode);
-        const maxWords = getMaxWordsForMode(mode);
+        const maxWords = getMaxWordsForMode(mode, state);
         const expectedLetter = state.currentLetter.toUpperCase();
 
         // Procura entre as linhas da mensagem pela linha no formato "<Letra> de <Palavra>"
@@ -460,36 +672,36 @@ async function handleXuxaGameMessage(message, client) {
             }
         }
 
-        // 1. FORMATO INVÁLIDO OU CONVERSA NO GRUPO (BAN SILENCIOSO)
+        // 1. FORMATO INVÁLIDO OU CONVERSA NO GRUPO
         if (!match) {
-            await banUser(chat, client, senderId, 'Conversou durante o jogo ou não usou o formato "X de Y".');
+            await banUser(chat, client, senderId, 'Conversou durante o jogo ou não usou o formato "X de Y".', message);
             return true;
         }
 
         const inputLetter = match[1].toUpperCase();
         const inputPhrase = match[2].trim();
 
-        // 2. LIMITE DE PALAVRAS POR DIA (3 no ABC, 2 no AEIOU - BAN SILENCIOSO)
+        // 2. LIMITE DE PALAVRAS POR DIA PARA O MODO ATUAL
         const currentCount = state.userCounts[senderId] || 0;
         if (currentCount >= maxWords) {
-            await banUser(chat, client, senderId, `Falou MAIS de ${maxWords} palavras no mesmo dia/rodada (${mode}).`);
+            await banUser(chat, client, senderId, `Falou MAIS de ${maxWords} palavra(s) no mesmo dia/rodada (${mode}).`, message);
             return true;
         }
 
-        // 3. LETRA FORA DA ORDEM (BAN SILENCIOSO)
+        // 3. LETRA FORA DA ORDEM
         if (inputLetter !== expectedLetter) {
-            await banUser(chat, client, senderId, `Letra fora da ordem alfabética. Esperado: ${expectedLetter}, Enviado: ${inputLetter}.`);
+            await banUser(chat, client, senderId, `Letra fora da ordem alfabética. Esperado: ${expectedLetter}, Enviado: ${inputLetter}.`, message);
             return true;
         }
 
-        // 4. VALIDAÇÃO DA PALAVRA / TEMA COM IA (BAN SILENCIOSO SE REPROVADO)
+        // 4. VALIDAÇÃO DA PALAVRA / TEMA COM IA
         const aprovado = await validarComIA(expectedLetter, inputPhrase, state.theme);
         if (!aprovado) {
-            await banUser(chat, client, senderId, `Palavra "${inputPhrase}" recusada para o tema "${state.theme}".`);
+            await banUser(chat, client, senderId, `Palavra "${inputPhrase}" recusada para o tema "${state.theme}".`, message);
             return true;
         }
 
-        // REGISTRA A JOGADA DO USUÁRIO (utiliza Set para registrar todas as variações de ID exatamente 1x por jogada)
+        // REGISTRA A JOGADA DO USUÁRIO
         const idsToRegister = new Set();
         if (senderId) {
             idsToRegister.add(senderId);
@@ -517,48 +729,60 @@ async function handleXuxaGameMessage(message, client) {
         }
 
         const currentIndex = alphabet.indexOf(expectedLetter);
-        const isLastLetter = (mode === 'AEIOU' && expectedLetter === 'U') ||
-                             (mode === 'ABC' && expectedLetter === 'Z') ||
+        const isLastLetter = (alphabet.includes('U') && alphabet.length === 5 && expectedLetter === 'U') ||
+                             (expectedLetter === 'Z') ||
                              currentIndex === alphabet.length - 1;
 
         // SE CHEGOU NA ÚLTIMA LETRA (Z NO ABC OU U NO AEIOU)
         if (isLastLetter) {
             await message.reply(`*${inputLetter} de ${inputPhrase}* APROVADO!`);
-
             saveGameState(state);
 
-            // Audit de banimento silencioso APENAS de quem não jogou NENHUMA vez nesta rodada
-            const playedMap = state.userCounts || {};
-            const botId = client?.info?.wid?._serialized;
-            const unplayedNonAdmins = [];
+            const todayStr = getTodayDateString();
+            const isTodayProtected = todayStr === '2026-09-10' || state.disableBansToday;
 
-            for (const p of chat.participants) {
-                const isAdmin = p.isAdmin || p.isSuperAdmin;
-                const isBot = botId && (p.id._serialized === botId || extractRawNumber(p.id._serialized) === extractRawNumber(botId));
+            // Audit de banimento silencioso de quem não jogou NENHUMA vez nesta rodada (se não for hoje protegido)
+            if (!isTodayProtected) {
+                const playedMap = state.userCounts || {};
+                const addedMidGameUsers = state.addedMidGameUsers || [];
+                const addedUsersTimestamps = state.addedUsersTimestamps || {};
+                const unplayedNonAdmins = [];
 
-                if (!isAdmin && !isBot && !isUserPlayed(p, playedMap)) {
-                    unplayedNonAdmins.push(p.id._serialized);
+                for (const p of chat.participants) {
+                    const pRaw = extractRawNumber(p.id?._serialized);
+                    const pLidRaw = p.lid ? extractRawNumber(p.lid._serialized) : null;
+                    const isAdminByConfig = (pRaw && ADMIN_NUMBERS.has(pRaw)) || (pLidRaw && ADMIN_NUMBERS.has(pLidRaw));
+                    const isAdmin = p.isAdmin || p.isSuperAdmin || isAdminByConfig;
+                    const isBot = botId && (p.id?._serialized === botId || extractRawNumber(p.id?._serialized) === extractRawNumber(botId));
+
+                    if (!isAdmin && !isBot && !isUserPlayed(p, playedMap, addedMidGameUsers, addedUsersTimestamps)) {
+                        unplayedNonAdmins.push(p.id._serialized);
+                    }
                 }
-            }
 
-            if (unplayedNonAdmins.length > 0) {
-                console.log(`[Xuxa Game] Rodada ${mode} concluída! Banindo silenciosamente ${unplayedNonAdmins.length} membro(s) não participantes...`);
-                try {
-                    await chat.removeParticipants(unplayedNonAdmins);
-                } catch (err) {
-                    console.error("Erro ao banir não participantes no final da rodada:", err.message);
+                if (unplayedNonAdmins.length > 0) {
+                    console.log(`[Xuxa Game] Rodada ${mode} concluida! Banindo ${unplayedNonAdmins.length} membro(s) nao participantes...`);
+                    try {
+                        await chat.removeParticipants(unplayedNonAdmins);
+
+                        const mentions = unplayedNonAdmins.map(id => `@${extractRawNumber(id)}`).join(', ');
+                        const banMsg = `${mentions} foram removidos por nao participarem da rodada de hoje.`;
+                        await chat.sendMessage(banMsg);
+                    } catch (err) {
+                        console.error("Erro ao banir nao participantes no final da rodada:", err.message);
+                    }
                 }
             }
 
             // Verifica se sobrou apenas 1 não-admin
             await checkLastSurvivor(chat, client);
 
-            // Marca o jogo como concluído hoje (bloqueia novos jogos até 00:01 AM de amanhã)
+            // Marca o jogo como concluído hoje
             state.gameCompletedToday = true;
             state.gameStarted = false;
             saveGameState(state);
 
-            await chat.sendMessage(`🎉 *CONSEGUIRAM! O ALFABETO (${mode}) FOI CONCLUÍDO!*\n\nAproveitem o tempo livre! Até o próximo reset das 00:01 ninguém mais é banido.`);
+            await chat.sendMessage(`Conseguiram! O alfabeto foi concluido.\n\nAproveitem o tempo livre. Ate o proximo reset as 00:01 ninguem mais e banido.`);
             return true;
         }
 
@@ -577,5 +801,6 @@ async function handleXuxaGameMessage(message, client) {
 module.exports = {
     handleXuxaGameMessage,
     checkDailyXuxaReset,
-    executeDailyReset
+    executeDailyReset,
+    registerJoinedUser
 };

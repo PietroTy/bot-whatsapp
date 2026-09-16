@@ -127,16 +127,33 @@ async function handleStickerCommands(message, client) {
         return await client.pupPage.evaluate(async (msgIdStr) => {
             let step = "Início";
             try {
-                await new Promise(resolve => setTimeout(resolve, 1500));
+                await new Promise(resolve => setTimeout(resolve, 1000));
 
                 if (!msgIdStr) return { error: "ID da mensagem alvo não definido." };
 
                 step = "Buscando targetMsg na Store";
-                let targetMsg = window.Store.Msg.get(msgIdStr);
-                if (!targetMsg) {
+                let MsgStore = null;
+                try {
+                    MsgStore = (window.Store && window.Store.Msg) || null;
+                    if (!MsgStore && window.require && typeof window.require === 'function') {
+                        try { MsgStore = window.require('WAWebCollections')?.Msg || null; } catch (_) {}
+                    }
+                    if (!MsgStore && window.require && typeof window.require === 'function') {
+                        try { MsgStore = window.require('WAWebMsgCollection')?.MsgCollection || null; } catch (_) {}
+                    }
+                } catch (storeErr) {
+                    return { error: "Erro ao acessar Store: " + storeErr.message };
+                }
+
+                if (!MsgStore) {
+                    return { error: "Coleção de mensagens (Store.Msg) indisponível no WhatsApp Web." };
+                }
+
+                let targetMsg = typeof MsgStore.get === 'function' ? MsgStore.get(msgIdStr) : null;
+                if (!targetMsg && typeof MsgStore.getMessagesById === 'function') {
                     try {
                         step = "Buscando targetMsg via getMessagesById";
-                        const fetched = await window.Store.Msg.getMessagesById([msgIdStr]);
+                        const fetched = await MsgStore.getMessagesById([msgIdStr]);
                         targetMsg = fetched?.messages?.[0];
                     } catch (e) {
                         return { error: "Erro em getMessagesById(msgIdStr=" + msgIdStr + "): " + e.message };
@@ -145,10 +162,9 @@ async function handleStickerCommands(message, client) {
 
                 if (!targetMsg) {
                     step = "Fallback StanzaID";
-                    // Tenta achar varrendo os models carregados usando apenas o sufixo (StanzaID)
                     const stanzaId = msgIdStr.split('_').pop();
-                    if (stanzaId) {
-                        targetMsg = window.Store.Msg.getModelsArray().find(m => m.id && m.id.id === stanzaId);
+                    if (stanzaId && typeof MsgStore.getModelsArray === 'function') {
+                        targetMsg = MsgStore.getModelsArray().find(m => m.id && (m.id.id === stanzaId || m.id._serialized === msgIdStr));
                     }
                 }
 
@@ -197,14 +213,41 @@ async function handleStickerCommands(message, client) {
                 let decryptedMedia;
                 try {
                     const mockQpl = { addAnnotations: function() { return this; }, addPoint: function() { return this; } };
-                    decryptedMedia = await window.Store.DownloadManager.downloadAndMaybeDecrypt({
+
+                    // Resolve the download function through all known paths
+                    let downloadFn = null;
+                    if (window.require && typeof window.require === 'function') {
+                        try {
+                            // Primary: WAWebDownloadManager (has extra .downloadManager level)
+                            const mod = window.require('WAWebDownloadManager');
+                            if (mod && mod.downloadManager && typeof mod.downloadManager.downloadAndMaybeDecrypt === 'function') {
+                                downloadFn = mod.downloadManager.downloadAndMaybeDecrypt.bind(mod.downloadManager);
+                            } else if (mod && typeof mod.downloadAndMaybeDecrypt === 'function') {
+                                downloadFn = mod.downloadAndMaybeDecrypt.bind(mod);
+                            }
+                        } catch (_) {}
+                    }
+                    if (!downloadFn && window.Store && window.Store.DownloadManager) {
+                        const dm = window.Store.DownloadManager;
+                        if (dm.downloadManager && typeof dm.downloadManager.downloadAndMaybeDecrypt === 'function') {
+                            downloadFn = dm.downloadManager.downloadAndMaybeDecrypt.bind(dm.downloadManager);
+                        } else if (typeof dm.downloadAndMaybeDecrypt === 'function') {
+                            downloadFn = dm.downloadAndMaybeDecrypt.bind(dm);
+                        }
+                    }
+
+                    if (!downloadFn) {
+                        return { error: "DownloadManager indisponível (módulo WAWebDownloadManager não encontrado)." };
+                    }
+
+                    decryptedMedia = await downloadFn({
                         directPath,
                         encFilehash,
                         filehash,
                         mediaKey,
                         mediaKeyTimestamp,
                         type,
-                        signal: (new AbortController).signal,
+                        signal: (new AbortController()).signal,
                         downloadQpl: mockQpl
                     });
                 } catch (e) {
@@ -225,36 +268,67 @@ async function handleStickerCommands(message, client) {
     }
 
     if (message.hasMedia && text === '#sticker') {
-        const msgIdStr = message.id._serialized || (message.id ? `${message.id.fromMe ? 'true' : 'false'}_${message.id.remote._serialized || message.id.remote}_${message.id.id}` : null);
-        const result = await extractMediaFromMsgData(msgIdStr);
-        if (result && result.success) {
-            const media = new MessageMedia(result.mimetype, result.data, result.filename);
+        let media;
+        try {
+            media = await message.downloadMedia();
+        } catch (e) {
+            console.error("Erro no downloadMedia nativo:", e);
+        }
+
+        if (!media) {
+            const msgIdStr = message.id._serialized || (message.id ? `${message.id.fromMe ? 'true' : 'false'}_${message.id.remote._serialized || message.id.remote}_${message.id.id}` : null);
+            const result = await extractMediaFromMsgData(msgIdStr);
+            if (result && result.success) {
+                media = new MessageMedia(result.mimetype, result.data, result.filename);
+            } else if (result && result.error) {
+                console.error("[sticker] Fallback falhou:", result.error);
+            }
+        }
+
+        if (media) {
             await processMedia(media, chatJid, message);
         } else {
-            const erro = result ? result.error : "Desconhecido";
-            await message.reply("Erro ao baixar a mídia: " + erro);
+            await message.reply("Não consegui baixar a mídia. Tente enviar a imagem/vídeo novamente e responder com *#sticker*.");
         }
         return true;
     }
 
     if (message.hasQuotedMsg && text === '#sticker') {
-        let quotedIdStr = null;
-        if (message._data && message._data.quotedStanzaID) {
-            const isFromMe = message._data.quotedParticipant === client.info.wid._serialized;
-            const remote = message._data.quotedParticipant || message.to;
-            quotedIdStr = `${isFromMe ? 'true' : 'false'}_${remote}_${message._data.quotedStanzaID}`;
-        } else if (message._data && message._data.quotedMsgObj) {
-            const qid = message._data.quotedMsgObj.id;
-            quotedIdStr = qid._serialized || `${qid.fromMe ? 'true' : 'false'}_${qid.remote._serialized || qid.remote}_${qid.id}`;
+        let media;
+        try {
+            const quoted = await message.getQuotedMessage();
+            if (quoted && quoted.hasMedia) {
+                media = await quoted.downloadMedia();
+            }
+        } catch (e) {
+            console.error("Erro no downloadMedia nativo da mensagem citada:", e);
         }
-        
-        const result = await extractMediaFromMsgData(quotedIdStr);
-        if (result && result.success) {
-            const media = new MessageMedia(result.mimetype, result.data, result.filename);
+
+        if (!media) {
+            let quotedIdStr = null;
+            if (message._data && message._data.quotedStanzaID) {
+                const isFromMe = message._data.quotedParticipant === client.info.wid._serialized;
+                const remote = message._data.quotedParticipant || message.to;
+                quotedIdStr = `${isFromMe ? 'true' : 'false'}_${remote}_${message._data.quotedStanzaID}`;
+            } else if (message._data && message._data.quotedMsgObj) {
+                const qid = message._data.quotedMsgObj.id;
+                quotedIdStr = qid._serialized || `${qid.fromMe ? 'true' : 'false'}_${qid.remote._serialized || qid.remote}_${qid.id}`;
+            }
+            
+            if (quotedIdStr) {
+                const result = await extractMediaFromMsgData(quotedIdStr);
+                if (result && result.success) {
+                    media = new MessageMedia(result.mimetype, result.data, result.filename);
+                } else if (result && result.error) {
+                    console.error("[sticker] Fallback (quoted) falhou:", result.error);
+                }
+            }
+        }
+
+        if (media) {
             await processMedia(media, chatJid, message);
         } else {
-            const erro = result ? result.error : "Desconhecido";
-            await message.reply("Erro ao baixar a mídia da mensagem citada: " + erro);
+            await message.reply("Não consegui baixar a mídia citada. Tente reenviar a imagem/vídeo e responder com *#sticker*.");
         }
         return true;
     }

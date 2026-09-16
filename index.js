@@ -10,7 +10,7 @@ const { handleStickerCommands } = require('./handlers/stickerHandler');
 const { handleNewsCommands } = require('./handlers/newsHandler');
 const { handleBotCommands } = require('./handlers/botHandler');
 const { handleTermoCommands } = require('./handlers/termoHandler');
-const { handleXuxaGameMessage, checkDailyXuxaReset } = require('./handlers/xuxaHandler');
+const { handleXuxaGameMessage, checkDailyXuxaReset, registerJoinedUser } = require('./handlers/xuxaHandler');
 const { version } = require('./package.json');
 
 let client;
@@ -107,6 +107,27 @@ async function createClient() {
     client.on('disconnected', (reason) => {
         console.log('Bot desconectado:', reason);
         console.log('Tentando reconectar...');
+    });
+
+    client.on('group_join', async (notification) => {
+        try {
+            const configPath = path.join(__dirname, 'config/config.json');
+            if (fs.existsSync(configPath)) {
+                const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+                const xuxaGroupId = config.xuxaGroup || "5511998848997-1604500469@g.us";
+                const rawTarget = xuxaGroupId.split('@')[0];
+                const rawChat = notification.chatId ? notification.chatId.split('@')[0] : '';
+                if (notification.chatId === xuxaGroupId || rawChat === rawTarget) {
+                    const recipientIds = notification.recipientIds || [notification.id?.participant, notification.author];
+                    for (const idObj of recipientIds) {
+                        const idStr = typeof idObj === 'string' ? idObj : (idObj?._serialized || idObj?.user || '');
+                        if (idStr && idStr !== '[object Object]') registerJoinedUser(idStr);
+                    }
+                }
+            }
+        } catch (err) {
+            console.error("Erro ao processar evento group_join no Xuxatron:", err.message);
+        }
     });
 
     client.on('message_create', async (message) => {
