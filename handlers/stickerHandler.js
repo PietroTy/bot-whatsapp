@@ -155,16 +155,21 @@ async function handleStickerCommands(message, client) {
                         step = "Buscando targetMsg via getMessagesById";
                         const fetched = await MsgStore.getMessagesById([msgIdStr]);
                         targetMsg = fetched?.messages?.[0];
-                    } catch (e) {
-                        return { error: "Erro em getMessagesById(msgIdStr=" + msgIdStr + "): " + e.message };
-                    }
+                    } catch (e) {}
                 }
 
-                if (!targetMsg) {
-                    step = "Fallback StanzaID";
-                    const stanzaId = msgIdStr.split('_').pop();
-                    if (stanzaId && typeof MsgStore.getModelsArray === 'function') {
-                        targetMsg = MsgStore.getModelsArray().find(m => m.id && (m.id.id === stanzaId || m.id._serialized === msgIdStr));
+                if (!targetMsg && typeof MsgStore.getModelsArray === 'function') {
+                    step = "Fallback busca por partes da ID no MsgStore";
+                    const parts = msgIdStr.split('_');
+                    const models = MsgStore.getModelsArray();
+                    targetMsg = models.find(m => m && m.id && (parts.includes(m.id.id) || m.id._serialized === msgIdStr));
+                }
+
+                if (targetMsg) {
+                    const mediaTypes = ['image', 'video', 'sticker', 'audio', 'ptt', 'document'];
+                    if (!mediaTypes.includes(targetMsg.type)) {
+                        const q = targetMsg.quotedMsg || targetMsg._quotedMsgObj || targetMsg.quotedMsgObj;
+                        if (q) targetMsg = q;
                     }
                 }
 
@@ -247,6 +252,7 @@ async function handleStickerCommands(message, client) {
                         mediaKey,
                         mediaKeyTimestamp,
                         type,
+                        mimetype,
                         signal: (new AbortController()).signal,
                         downloadQpl: mockQpl
                     });
@@ -295,8 +301,9 @@ async function handleStickerCommands(message, client) {
 
     if (message.hasQuotedMsg && text === '#sticker') {
         let media;
+        let quoted = null;
         try {
-            const quoted = await message.getQuotedMessage();
+            quoted = await message.getQuotedMessage();
             if (quoted && quoted.hasMedia) {
                 media = await quoted.downloadMedia();
             }
@@ -305,16 +312,25 @@ async function handleStickerCommands(message, client) {
         }
 
         if (!media) {
-            let quotedIdStr = null;
-            if (message._data && message._data.quotedStanzaID) {
-                const isFromMe = message._data.quotedParticipant === client.info.wid._serialized;
-                const remote = message._data.quotedParticipant || message.to;
-                quotedIdStr = `${isFromMe ? 'true' : 'false'}_${remote}_${message._data.quotedStanzaID}`;
-            } else if (message._data && message._data.quotedMsgObj) {
-                const qid = message._data.quotedMsgObj.id;
-                quotedIdStr = qid._serialized || `${qid.fromMe ? 'true' : 'false'}_${qid.remote._serialized || qid.remote}_${qid.id}`;
+            let quotedIdStr = quoted?.id?._serialized || null;
+            if (!quotedIdStr && message._data) {
+                if (message._data.quotedStanzaID) {
+                    const isFromMe = message._data.quotedParticipant === client.info.wid._serialized;
+                    const remote = message.from;
+                    const participant = message._data.quotedParticipant;
+                    quotedIdStr = `${isFromMe ? 'true' : 'false'}_${remote}_${message._data.quotedStanzaID}`;
+                    if (participant && participant !== remote) {
+                        quotedIdStr += `_${participant}`;
+                    }
+                } else if (message._data.quotedMsgObj) {
+                    const qid = message._data.quotedMsgObj.id;
+                    quotedIdStr = qid._serialized || `${qid.fromMe ? 'true' : 'false'}_${qid.remote._serialized || qid.remote}_${qid.id}`;
+                }
             }
-            
+            if (!quotedIdStr && message.id) {
+                quotedIdStr = message.id._serialized;
+            }
+
             if (quotedIdStr) {
                 const result = await extractMediaFromMsgData(quotedIdStr);
                 if (result && result.success) {

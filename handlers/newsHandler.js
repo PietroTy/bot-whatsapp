@@ -551,10 +551,23 @@ async function handleAutomaticNews(message, client) {
         let allChats = [];
         try {
             allChats = await getChatsWithRetry(client);
-
-            // O log de chats foi removido para evitar poluição no console.
         } catch (err) {
-            console.error("Erro irrecuperável ao recuperar chats, enviarei apenas à mensagem original:", err);
+            console.error("Erro ao recuperar lista completa de chats via getChats():", err.message || err);
+        }
+
+        if (!allChats || allChats.length === 0) {
+            console.log("[Newsletter] Buscando grupos de destino diretamente por ID (fallback getChatById)...");
+            allChats = [];
+            for (const gId of chatWithNewsletter) {
+                try {
+                    const groupChat = await client.getChatById(gId);
+                    if (groupChat) {
+                        allChats.push(groupChat);
+                    }
+                } catch (e) {
+                    console.error(`[Newsletter] Falha ao obter chat ${gId} por getChatById:`, e.message);
+                }
+            }
         }
 
         allChats = Array.isArray(allChats) ? allChats : [];

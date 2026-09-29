@@ -227,19 +227,29 @@ async function isUserAdmin(chat, userId) {
 }
 
 async function checkLastSurvivor(chat, client) {
-    if (!chat || !chat.participants) return false;
+    if (!chat) return false;
+    let targetChat = chat;
+    try {
+        if (client && chat.id && chat.id._serialized) {
+            targetChat = await client.getChatById(chat.id._serialized);
+        }
+    } catch (err) {
+        // Fallback para chat existente
+    }
+
+    if (!targetChat || !targetChat.participants) return false;
     const botId = client?.info?.wid?._serialized;
-    const nonAdmins = getNonAdminParticipants(chat, botId);
+    const nonAdmins = getNonAdminParticipants(targetChat, botId);
 
     if (nonAdmins.length === 1) {
         const survivor = nonAdmins[0];
         const survivorId = survivor.id._serialized;
         const rawNum = extractRawNumber(survivorId);
 
-        console.log(`[Xuxa Game] Apenas 1 membro não-admin restante (${survivorId}). Promovendo a Admin!`);
+        console.log(`[Xuxa Game] Apenas 1 membro não-admin restante (${survivorId}). Promovendo a Admin e encerrando jogo!`);
 
         try {
-            await chat.promoteParticipants([survivorId]);
+            await targetChat.promoteParticipants([survivorId]);
         } catch (err) {
             console.error(`Erro ao promover participante ${survivorId} a admin:`, err.message);
         }
@@ -249,10 +259,26 @@ Voce e o ultimo sobrevivente do jogo da Xuxa!
 
 Voce provou o seu valor e sobreviveu ao expurgo. Como recompensa, foi promovido a administrador do grupo!
 
-O ciclo se reiniciara no proximo reset as 00:01 se houverem novos membros jogaveis.`;
+O ciclo se reiniciara no proximo reset as 12:00 se houverem novos membros jogaveis.`;
 
-        await chat.sendMessage(xuxatronMsg);
+        await targetChat.sendMessage(xuxatronMsg);
+
+        const state = loadGameState();
+        state.gameCompletedToday = true;
+        state.gameStarted = false;
+        saveGameState(state);
+
         return true;
+    } else if (nonAdmins.length === 0) {
+        const state = loadGameState();
+        if (state.gameStarted && !state.gameCompletedToday) {
+            console.log(`[Xuxa Game] 0 membros não-admins restantes. Finalizando jogo por hoje.`);
+            state.gameCompletedToday = true;
+            state.gameStarted = false;
+            saveGameState(state);
+            await targetChat.sendMessage(`Nao ha mais participantes nao-admins no grupo. O jogo da Xuxa foi encerrado por hoje.`);
+            return true;
+        }
     }
     return false;
 }
@@ -283,7 +309,7 @@ async function banUser(chat, client, userId, reason, message = null) {
     const todayStr = getTodayDateString();
 
     // TRAVA DE SEGURANÇA: DATAS PROTEGIDAS OU SE DISABLE_BANS_TODAY ESTIVER ATIVO
-    const protectedDates = ['2026-09-10', '2026-09-15'];
+    const protectedDates = ['2026-09-10', '2026-09-15', '2026-09-28'];
     const isTodayProtected = protectedDates.includes(todayStr) || state.disableBansToday;
     if (isTodayProtected) {
         console.log(`[Xuxa Game] [PROTEÇÃO HOJE] Membro ${userId} cometeu infração ("${reason}"), mas banimentos estão DESATIVADOS hoje.`);
@@ -502,7 +528,7 @@ async function executeDailyReset(client) {
         const botId = client?.info?.wid?._serialized;
         const playedUserIds = state.userCounts || {};
         const addedMidGameUsers = state.addedMidGameUsers || [];
-        const isTodayProtected = todayStr === '2026-09-10' || state.disableBansToday;
+        const isTodayProtected = ['2026-09-10', '2026-09-28'].includes(todayStr) || state.disableBansToday;
         const wasGameActiveYesterday = state.gameStarted && !state.gameCompletedToday && Object.keys(playedUserIds).length > 0;
 
         // Se o jogo de ontem NÃO terminou e HOJE NÃO está protegido, bane não-participantes (respeitando imunidade de adicionados no meio do jogo)
@@ -521,7 +547,7 @@ async function executeDailyReset(client) {
             }
 
             if (unplayedNonAdmins.length > 0) {
-                console.log(`[Xuxa Game] Reset 00:01. Banindo ${unplayedNonAdmins.length} membro(s) nao participantes do dia anterior...`);
+                console.log(`[Xuxa Game] Reset 12:00. Banindo ${unplayedNonAdmins.length} membro(s) nao participantes do dia anterior...`);
                 try {
                     await chat.removeParticipants(unplayedNonAdmins);
 
@@ -530,15 +556,16 @@ async function executeDailyReset(client) {
                     const banMsg = `${mentions} foram removidos por nao participarem da rodada de ontem.\n\nAinda é a letra ${currentLetter}`;
                     await chat.sendMessage(banMsg);
                 } catch (err) {
-                    console.error("Erro ao banir nao participantes no reset 00:01:", err.message);
+                    console.error("Erro ao banir nao participantes no reset 12:00:", err.message);
                 }
             }
         } else {
-            console.log("[Xuxa Game] Reset das 00:01 sem banimentos (jogo concluído, sem jogadas ou proteção temporária ativa).");
+            console.log("[Xuxa Game] Reset das 12:00 sem banimentos (jogo concluído, sem jogadas ou proteção temporária ativa).");
         }
 
         // Verifica se sobrou apenas 1 não-admin
         if (await checkLastSurvivor(chat, client)) {
+            state.lastResetDate = todayStr;
             state.gameCompletedToday = true;
             state.gameStarted = false;
             saveGameState(state);
@@ -551,6 +578,7 @@ async function executeDailyReset(client) {
         // Se NÃO HOUVER membros não-admins (0 jogadores), não inicia o jogo
         if (currentNonAdmins.length === 0) {
             console.log("[Xuxa Game] Nenhum participante não-admin no grupo. Jogo em espera.");
+            state.lastResetDate = todayStr;
             state.gameStarted = false;
             state.gameCompletedToday = true;
             saveGameState(state);
@@ -596,7 +624,7 @@ async function executeDailyReset(client) {
             lastResetDate: todayStr,
             gameStarted: true,
             gameCompletedToday: false,
-            disableBansToday: isTodayProtected ? (todayStr === '2026-09-10') : false
+            disableBansToday: isTodayProtected ? (['2026-09-10', '2026-09-28'].includes(todayStr)) : false
         };
         saveGameState(newState);
 
@@ -615,14 +643,16 @@ async function executeDailyReset(client) {
 
 async function checkDailyXuxaReset(client) {
     const now = new Date();
-    const hours = now.getHours();
-    const minutes = now.getMinutes();
-    const todayStr = getTodayDateString();
+    // O reset diário ocorre ao meio-dia (12:00)
+    if (now.getHours() < 12) {
+        return;
+    }
 
+    const todayStr = getTodayDateString();
     const state = loadGameState();
-    // Executa às 00:01 AM se ainda não rodou hoje
-    if (hours === 0 && minutes === 1 && state.lastResetDate !== todayStr) {
-        console.log(`[Xuxa Game] Executando reset diário automático das 00:01 (${todayStr})...`);
+
+    if (state.lastResetDate !== todayStr) {
+        console.log(`[Xuxa Game] Executando reset diário automático das 12:00 para o dia ${todayStr} (último reset: ${state.lastResetDate || 'nunca'})...`);
         await executeDailyReset(client);
     }
 }
@@ -653,6 +683,9 @@ async function handleXuxaGameMessage(message, client) {
         }
 
         const chat = await message.getChat();
+        if (await checkLastSurvivor(chat, client)) {
+            return true;
+        }
         const mode = state.mode || 'ABC_2';
         const alphabet = getAlphabetForMode(mode);
         const maxWords = getMaxWordsForMode(mode, state);
@@ -739,7 +772,7 @@ async function handleXuxaGameMessage(message, client) {
             saveGameState(state);
 
             const todayStr = getTodayDateString();
-            const isTodayProtected = todayStr === '2026-09-10' || state.disableBansToday;
+            const isTodayProtected = ['2026-09-10', '2026-09-28'].includes(todayStr) || state.disableBansToday;
 
             // Audit de banimento silencioso de quem não jogou NENHUMA vez nesta rodada (se não for hoje protegido)
             if (!isTodayProtected) {
@@ -782,7 +815,7 @@ async function handleXuxaGameMessage(message, client) {
             state.gameStarted = false;
             saveGameState(state);
 
-            await chat.sendMessage(`Conseguiram! O alfabeto foi concluido.\n\nAproveitem o tempo livre. Ate o proximo reset as 00:01 ninguem mais e banido.`);
+            await chat.sendMessage(`Conseguiram! O alfabeto foi concluido.\n\nAproveitem o tempo livre. Ate o proximo reset as 12:00 ninguem mais e banido.`);
             return true;
         }
 
@@ -802,5 +835,6 @@ module.exports = {
     handleXuxaGameMessage,
     checkDailyXuxaReset,
     executeDailyReset,
-    registerJoinedUser
+    registerJoinedUser,
+    checkLastSurvivor
 };

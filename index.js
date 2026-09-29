@@ -10,7 +10,7 @@ const { handleStickerCommands } = require('./handlers/stickerHandler');
 const { handleNewsCommands } = require('./handlers/newsHandler');
 const { handleBotCommands } = require('./handlers/botHandler');
 const { handleTermoCommands } = require('./handlers/termoHandler');
-const { handleXuxaGameMessage, checkDailyXuxaReset, registerJoinedUser } = require('./handlers/xuxaHandler');
+const { handleXuxaGameMessage, checkDailyXuxaReset, registerJoinedUser, checkLastSurvivor } = require('./handlers/xuxaHandler');
 const { version } = require('./package.json');
 
 let client;
@@ -93,7 +93,14 @@ async function createClient() {
         qrcode.generate(qr, { small: true });
     });
 
-    client.on('ready', () => console.log(`Bot v${version} está ON e pronto!`));
+    client.on('ready', async () => {
+        console.log(`Bot v${version} está ON e pronto!`);
+        try {
+            await checkDailyXuxaReset(client);
+        } catch (err) {
+            console.error('[Setup] Erro ao verificar reset do Xuxa no boot:', err.message);
+        }
+    });
     client.on('authenticated', () => console.log('Bot autenticado! Sincronizando mensagens e chats (aguarde 15-30s para o status ON)...'));
 
     client.on('auth_failure', (msg) => {
@@ -129,6 +136,27 @@ async function createClient() {
             console.error("Erro ao processar evento group_join no Xuxatron:", err.message);
         }
     });
+
+    const checkXuxaGroupSurvivor = async (notification) => {
+        try {
+            const configPath = path.join(__dirname, 'config/config.json');
+            if (fs.existsSync(configPath)) {
+                const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+                const xuxaGroupId = config.xuxaGroup || "5511998848997-1604500469@g.us";
+                const rawTarget = xuxaGroupId.split('@')[0];
+                const rawChat = notification.chatId ? notification.chatId.split('@')[0] : '';
+                if (notification.chatId === xuxaGroupId || rawChat === rawTarget) {
+                    const chat = await client.getChatById(xuxaGroupId);
+                    await checkLastSurvivor(chat, client);
+                }
+            }
+        } catch (err) {
+            console.error("Erro ao verificar sobrevivente no evento do grupo Xuxa:", err.message);
+        }
+    };
+
+    client.on('group_leave', checkXuxaGroupSurvivor);
+    client.on('group_admin_state', checkXuxaGroupSurvivor);
 
     client.on('message_create', async (message) => {
         if (!message.body || message.body.length < 2) return;
