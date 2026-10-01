@@ -14,22 +14,22 @@ const ADMIN_NUMBERS = new Set([
 ]);
 
 const THEMES = [
-    "Filmes, Séries ou Desenhos",
-    "Comidas, Bebidas ou Sobremesas",
-    "Países, Cidades ou Capitais",
-    "Animais, Insetos ou Seres Vivos",
-    "Marcas, Empresas ou Produtos",
-    "Famosos, Celebridades ou Personagens Históricos",
-    "Jogos, Games ou Personagens de Games",
+    "Desenhos",
+    "Cabe na Mão",
+    "CEP",
+    "Animais",
+    "Gente Famosa",
+    "Jogos",
     "Objetos do Dia a Dia",
-    "Profissões ou Áreas de Estudo",
-    "Partes do Corpo Humano ou Anatomia",
-    "Músicas, Bandas ou Cantores",
-    "Esportes ou Atletas",
-    "Vilões de Filmes ou Desenhos",
-    "Frutas, Verduras ou Legumes",
+    "Profissões",
+    "Corpo Humano",
+    "Músicas",
+    "Esportes",
+    "Vilões",
+    "Tem na Feira",
     "O Pietro é...",
-    "Tema Livre (Qualquer bosta)"
+    "Tema Livre (Qualquer bosta)",
+    "ABC da Xuxa (O Original)"
 ];
 
 const ALPHABET_ABC = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'];
@@ -377,6 +377,32 @@ function isKnownCityOrPlace(palavra, letra) {
     return list.has(norm);
 }
 
+const ORIGINAL_XUXA_WORDS = {
+    'A': ['amor'],
+    'B': ['baixinho', 'baixinhos'],
+    'C': ['coracao'],
+    'D': ['doce', 'docinho'],
+    'E': ['escola'],
+    'F': ['feijao'],
+    'G': ['gente'],
+    'H': ['humano'],
+    'I': ['igualdade'],
+    'J': ['juventude'],
+    'L': ['liberdade'],
+    'M': ['molecagem'],
+    'N': ['natureza'],
+    'O': ['obrigado', 'obrigada'],
+    'P': ['protecao'],
+    'Q': ['queroquero', 'quero'],
+    'R': ['riacho'],
+    'S': ['saudade', 'saudades'],
+    'T': ['terra'],
+    'U': ['universo'],
+    'V': ['vitoria'],
+    'X': ['xuxa', 'xodo', 'xaxado', 'xicara'],
+    'Z': ['zaza', 'zumzumzum', 'zum']
+};
+
 function checkInitialLetterMatchJS(palavra, letraEsperada) {
     if (!palavra || !letraEsperada) return false;
     // Limpa aspas, travessões, pontuação inicial e espaços
@@ -398,7 +424,28 @@ async function validarComIA(letra, palavra, tema) {
         return false;
     }
 
-    if ((tLower.includes("país") || tLower.includes("pais") || tLower.includes("cidade") || tLower.includes("capital")) && isKnownCityOrPlace(palavra, expectedLetter)) {
+    // 2. Tema "ABC da Xuxa (O Original)": validação determinística sem IA (letra oficial da música)
+    if (tLower.includes("original") || tLower.includes("abc da xuxa")) {
+        const allowed = ORIGINAL_XUXA_WORDS[expectedLetter];
+        if (!allowed) {
+            // Letras K, W, Y (fora da música de 1988): aceita qualquer palavra iniciada com a letra
+            return true;
+        }
+        const normInput = palavra
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-z0-9]/g, "")
+            .trim();
+
+        const isMatch = allowed.includes(normInput);
+        if (!isMatch) {
+            console.log(`[Xuxa Game] Recusado no Tema Original (JS sem IA): "${palavra}" (norm: "${normInput}") não é a palavra oficial para a letra ${expectedLetter} da Xuxa.`);
+        }
+        return isMatch;
+    }
+
+    if ((tLower.includes("país") || tLower.includes("pais") || tLower.includes("cidade") || tLower.includes("capital") || tLower.includes("cep")) && isKnownCityOrPlace(palavra, expectedLetter)) {
         return true;
     }
 
@@ -456,20 +503,20 @@ function gerarPalavraParaLetraA(tema) {
     const t = (tema || '').toLowerCase();
 
     if (t.includes("esporte")) return "Atletismo";
-    if (t.includes("filme") || t.includes("série") || t.includes("desenho")) return "Avatar";
-    if (t.includes("comida") || t.includes("bebida") || t.includes("sobremesa")) return "Arroz";
-    if (t.includes("país") || t.includes("pais") || t.includes("cidade") || t.includes("capital")) return "Alemanha";
-    if (t.includes("animal") || t.includes("inseto") || t.includes("seres")) return "Águia";
-    if (t.includes("marca") || t.includes("empresa") || t.includes("produto")) return "Apple";
-    if (t.includes("famoso") || t.includes("celebridade") || t.includes("histórico")) return "Ayrton Senna";
+    if (t.includes("desenho") || t.includes("filme") || t.includes("série")) return "Avatar";
+    if (t.includes("mão") || t.includes("mao")) return "Anel";
+    if (t.includes("cep") || t.includes("país") || t.includes("pais") || t.includes("cidade") || t.includes("capital")) return "Alemanha";
+    if (t.includes("animal") || t.includes("inseto")) return "Águia";
+    if (t.includes("famoso") || t.includes("famosa") || t.includes("celebridade")) return "Ayrton Senna";
     if (t.includes("jogo") || t.includes("game")) return "Among Us";
     if (t.includes("objeto")) return "Abajur";
     if (t.includes("profissão") || t.includes("profissao") || t.includes("estudo")) return "Advogado";
     if (t.includes("corpo") || t.includes("anatomia")) return "Abdômen";
-    if (t.includes("música") || t.includes("musica") || t.includes("banda") || t.includes("cantor")) return "Anitta";
+    if (t.includes("música") || t.includes("musica") || t.includes("banda")) return "Anitta";
     if (t.includes("vilão") || t.includes("vilao")) return "Apocalipse";
-    if (t.includes("fruta") || t.includes("verdura") || t.includes("legume")) return "Abacaxi";
+    if (t.includes("feira") || t.includes("fruta") || t.includes("verdura")) return "Abacaxi";
     if (t.includes("pietro")) return "Amoroso";
+    if (t.includes("xuxa")) return "Amor";
 
     return "Amor";
 }
